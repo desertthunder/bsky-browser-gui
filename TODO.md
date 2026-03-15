@@ -39,14 +39,14 @@
 
 ## Milestone 5 — Search & Data Table
 
-- [ ] Implement `SearchService` struct with Wails service binding
-- [ ] `Search(query, source)` — FTS5 query with BM25 ranking and source filter
-- [ ] `CountPosts()` — total indexed post count
-- [ ] Frontend: search bar with query input and source filter (All / Saved / Liked segmented control)
-- [ ] Frontend: tabbed data table component (Saved / Liked / All tabs)
-- [ ] Columns: Author Handle, Text (truncated), Created At, ♥ Likes, 🔁 Reposts, 💬 Replies, Source
-- [ ] Client-side column sorting (click header to toggle asc/desc)
-- [ ] Row click → open post URL in default browser via `runtime.BrowserOpenURL`
+- [x] Implement `SearchService` struct with Wails service binding
+- [x] `Search(query, source)` — FTS5 query with BM25 ranking and source filter
+- [x] `CountPosts()` — total indexed post count
+- [x] Frontend: search bar with query input and source filter (All / Saved / Liked segmented control)
+- [x] Frontend: tabbed data table component (Saved / Liked / All tabs)
+- [x] Columns: Author Handle, Text (truncated), Created At, ♥ Likes, 🔁 Reposts, 💬 Replies, Source
+- [x] Client-side column sorting (click header to toggle asc/desc)
+- [x] Row click → open post URL in default browser via `runtime.BrowserOpenURL`
 
 ## Milestone 6 — Facets & Log Viewer
 
@@ -61,6 +61,7 @@
 
 ## Milestone 7 — Polish
 
+- [ ] Animations with svelte APIs (transition, animate)
 - [ ] Empty state: show "No posts indexed" with prompt to refresh
 - [ ] Error handling: toast/notification for network failures, auth expiry
 - [ ] Keyboard shortcuts: `Cmd+K` focus search, `Cmd+R` refresh, `Cmd+L` toggle log viewer

@@ -2,23 +2,26 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx          context.Context
-	authService  *AuthService
-	indexService *IndexService
+	ctx           context.Context
+	authService   *AuthService
+	indexService  *IndexService
+	searchService *SearchService
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		authService:  NewAuthService(),
-		indexService: NewIndexService(),
+		authService:   NewAuthService(),
+		indexService:  NewIndexService(),
+		searchService: NewSearchService(),
 	}
 }
 
@@ -31,13 +34,13 @@ func (a *App) startup(ctx context.Context) {
 
 	dbPath := getDBPath()
 	if err := Open(dbPath); err != nil {
-		fmt.Printf("failed to open database: %v\n", err)
+		runtime.LogErrorf(a.ctx, "failed to open database: %v", err)
 		return
 	}
 
 	if a.authService.IsAuthenticated() {
 		if err := a.authService.RefreshSession(); err != nil {
-			fmt.Printf("token refresh failed on startup: %v\n", err)
+			runtime.LogWarningf(a.ctx, "token refresh failed on startup: %v", err)
 		}
 	}
 }
@@ -45,7 +48,7 @@ func (a *App) startup(ctx context.Context) {
 // shutdown is called when the app shuts down
 func (a *App) shutdown(ctx context.Context) {
 	if err := Close(); err != nil {
-		fmt.Printf("failed to close database: %v\n", err)
+		runtime.LogErrorf(ctx, "failed to close database: %v", err)
 	}
 }
 
@@ -62,9 +65,4 @@ func getDBPath() string {
 	}
 
 	return filepath.Join(configDir, "bsky-browser", "bsky-browser.db")
-}
-
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
