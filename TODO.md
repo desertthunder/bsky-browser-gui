@@ -61,10 +61,10 @@
 
 ## Milestone 7 — Polish
 
-- [ ] Animations with svelte APIs (transition, animate)
-- [ ] Empty state: show "No posts indexed" with prompt to refresh
-- [ ] Error handling: toast/notification for network failures, auth expiry
-- [ ] Keyboard shortcuts: `Cmd+K` focus search, `Cmd+R` refresh, `Cmd+L` toggle log viewer
+- [x] Animations with svelte APIs (transition, animate)
+- [x] Empty state: show "No posts indexed" with prompt to refresh
+- [x] Error handling: toast/notification for network failures, auth expiry
+- [x] Keyboard shortcuts: `Cmd+K` focus search, `Cmd+R` refresh, `Cmd+L` toggle log viewer
 - [ ] Window title and app icon (`build/appicon.png`)
 - [ ] Production build verification (`wails build` → macOS `.app` bundle)
 - [ ] README with build instructions, screenshots, and usage

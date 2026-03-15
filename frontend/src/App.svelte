@@ -3,6 +3,7 @@
   import "@fontsource-variable/geist";
   import "@fontsource-variable/lora";
   import { onMount } from "svelte";
+  import { fade, slide } from "svelte/transition";
   import { Login, Whoami, IsAuthenticated } from "../wailsjs/go/main/AuthService";
   import { Refresh, IsIndexing } from "../wailsjs/go/main/IndexService";
   import { Search, CountPosts } from "../wailsjs/go/main/SearchService";
@@ -10,6 +11,9 @@
   import SearchBar from "./lib/components/SearchBar.svelte";
   import DataTable from "./lib/components/DataTable.svelte";
   import LogViewer from "./lib/components/LogViewer.svelte";
+  import Toaster from "./lib/components/Toast.svelte";
+  import { toaster } from "./lib/stores/toast.svelte";
+  import EmptyState from "./lib/components/EmptyState.svelte";
   import type { main } from "../wailsjs/go/models";
 
   type AuthInfo = { handle: string; did: string };
@@ -34,34 +38,43 @@
   let isSearching = $state(false);
   let showLogs = $state(false);
 
-  onMount(async () => {
-    await checkAuthStatus();
+  onMount(() => {
+    document.addEventListener("keydown", handleGlobalKeydown);
 
-    EventsOn("index:started", () => {
-      isIndexing = true;
-      showProgress = true;
-      indexStats = { fetched: 0, inserted: 0, errors: 0, total: 0 };
-    });
+    checkAuthStatus().then(() => {
+      EventsOn("index:started", () => {
+        isIndexing = true;
+        showProgress = true;
+        indexStats = { fetched: 0, inserted: 0, errors: 0, total: 0 };
+      });
 
-    EventsOn("index:progress", (stats: any) => {
-      indexStats = stats;
-    });
+      EventsOn("index:progress", (stats: any) => {
+        indexStats = stats;
+      });
 
-    EventsOn("index:done", (result: any) => {
-      isIndexing = false;
-      indexStats.total = result.total || 0;
+      EventsOn("index:done", (result: any) => {
+        isIndexing = false;
+        indexStats.total = result.total || 0;
+        loadPosts();
+        toaster.success(`Indexed ${result.total} posts successfully`);
+        setTimeout(() => {
+          showProgress = false;
+        }, 3000);
+      });
+
+      IsIndexing().then((indexing) => {
+        isIndexing = indexing;
+        if (isIndexing) {
+          showProgress = true;
+        }
+      });
+
       loadPosts();
-      setTimeout(() => {
-        showProgress = false;
-      }, 3000);
     });
 
-    isIndexing = await IsIndexing();
-    if (isIndexing) {
-      showProgress = true;
-    }
-
-    await loadPosts();
+    return () => {
+      document.removeEventListener("keydown", handleGlobalKeydown);
+    };
   });
 
   async function checkAuthStatus() {
@@ -78,12 +91,14 @@
       }
     } catch (err) {
       status = "Failed to check authentication status";
+      toaster.error("Failed to check authentication status");
     }
   }
 
   async function handleLogin() {
     if (!handle.trim()) {
       status = "Please enter your Bluesky handle";
+      toaster.warning("Please enter your Bluesky handle");
       return;
     }
 
@@ -93,9 +108,11 @@
     try {
       await Login(handle.trim());
       status = "Login successful!";
+      toaster.success("Login successful!");
       await checkAuthStatus();
     } catch (err) {
       status = `Login failed: ${err}`;
+      toaster.error(`Login failed: ${err}`);
     } finally {
       isLoading = false;
     }
@@ -108,6 +125,7 @@
       await Refresh(refreshLimit);
     } catch (err) {
       status = `Refresh failed: ${err}`;
+      toaster.error(`Refresh failed: ${err}`);
     }
   }
 
@@ -117,6 +135,7 @@
       await performSearch(searchQuery, searchSource);
     } catch (err) {
       console.error("Failed to load posts:", err);
+      toaster.error("Failed to load posts");
     }
   }
 
@@ -128,6 +147,7 @@
     } catch (err) {
       console.error("Search failed:", err);
       searchResults = [];
+      toaster.error("Search failed");
     } finally {
       isSearching = false;
     }
@@ -173,12 +193,36 @@
       handleLogin();
     }
   }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+      event.preventDefault();
+      const searchInput = document.querySelector('input[type="search"]') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+      }
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key === "r") {
+      event.preventDefault();
+      if (!isIndexing) {
+        handleRefresh();
+      }
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key === "l") {
+      event.preventDefault();
+      showLogs = !showLogs;
+    }
+  }
 </script>
+
+<Toaster />
 
 <main class="min-h-screen bg-black text-bright flex flex-col">
   {#if !isLoggedIn}
     <!-- Login View -->
-    <div class="flex-1 flex items-center justify-center p-4">
+    <div class="flex-1 flex items-center justify-center p-4" transition:fade={{ duration: 300 }}>
       <div class="w-full max-w-md">
         <div class="text-center mb-8">
           <h1 class="font-serif text-4xl mb-2">bsky-browser</h1>
@@ -212,7 +256,7 @@
           </div>
 
           {#if status}
-            <div class="mt-4 p-3 bg-black border border-outline rounded">
+            <div class="mt-4 p-3 bg-black border border-outline rounded" transition:slide={{ duration: 200 }}>
               <p class="font-mono text-xs text-muted">{status}</p>
             </div>
           {/if}
@@ -232,9 +276,21 @@
 
           <div class="flex items-center gap-3">
             <button
-              onclick={() => showLogs = !showLogs}
-              class="font-mono text-xs px-3 py-2 rounded bg-surface border border-outline hover:bg-outline text-bright transition-colors {showLogs ? 'bg-[#333]' : ''}">
-              {showLogs ? 'Hide Logs' : 'Show Logs'}
+              onclick={() => (showLogs = !showLogs)}
+              class="font-mono text-xs px-3 py-2 rounded bg-surface border border-outline hover:bg-outline text-bright transition-colors {showLogs
+                ? 'bg-[#333]'
+                : ''}">
+              {#if showLogs}
+                <span class="flex items-center gap-2">
+                  <i class="i-ri-eye-off-line"></i>
+                  <span>Hide Logs</span>
+                </span>
+              {:else}
+                <span class="flex items-center gap-2">
+                  <i class="i-ri-eye-line"></i>
+                  <span>Show Logs</span>
+                </span>
+              {/if}
             </button>
 
             <div class="flex items-center gap-2">
@@ -255,7 +311,10 @@
               {#if isIndexing}
                 <span class="animate-pulse">Refreshing...</span>
               {:else}
-                Refresh
+                <span class="flex items-center gap-2">
+                  <i class="i-ri-refresh-line"></i>
+                  <span>Refresh</span>
+                </span>
               {/if}
             </button>
           </div>
@@ -273,20 +332,34 @@
           <div class="flex items-center justify-center h-full">
             <span class="font-sans text-muted animate-pulse">Searching...</span>
           </div>
+        {:else if totalPosts === 0}
+          <EmptyState onRefresh={handleRefresh} />
         {:else}
           <DataTable posts={searchResults} {sortColumn} {sortDirection} onSort={handleSort} />
         {/if}
       </div>
 
       <!-- Log Viewer -->
-      <LogViewer visible={showLogs} />
+      {#if showLogs}
+        <div transition:slide={{ duration: 300 }}>
+          <LogViewer visible={showLogs} />
+        </div>
+      {/if}
 
       <!-- Progress Bar (bottom pinned) -->
       {#if showProgress}
-        <div class="border-t border-outline bg-surface px-6 py-3">
+        <div class="border-t border-outline bg-surface px-6 py-3" transition:slide={{ duration: 300 }}>
           <div class="flex items-center justify-between mb-2">
             <span class="font-sans text-sm text-muted">
-              {isIndexing ? "Indexing..." : "Indexing complete"}
+              <!-- {isIndexing ? "Indexing..." : "Indexing complete"} -->
+              {#if isIndexing}
+                <span class="animate-pulse">Indexing...</span>
+              {:else}
+                <span class="flex items-center gap-2">
+                  <i class="i-ri-check-line text-emerald-400"></i>
+                  <span>Indexing complete</span>
+                </span>
+              {/if}
             </span>
             <span class="font-mono text-xs text-muted">
               {indexStats.inserted} inserted / {indexStats.fetched} fetched
