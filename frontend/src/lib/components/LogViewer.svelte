@@ -1,18 +1,13 @@
 <script lang="ts">
+  import { Clear, GetEntries } from "../../../wailsjs/go/main/LogService";
   import { EventsOn } from "../../../wailsjs/runtime/runtime";
   import { onMount } from "svelte";
 
   type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
-  type LogEntry = {
-    level: LogLevel;
-    message: string;
-    timestamp: string;
-  };
+  type LogEntry = { level: LogLevel; message: string; timestamp: string };
 
-  type Props = {
-    visible: boolean;
-  };
+  type Props = { visible: boolean };
 
   let { visible }: Props = $props();
 
@@ -53,12 +48,7 @@
 
   function formatTimestamp(timestamp: string): string {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
 
   function scrollToBottom() {
@@ -77,6 +67,7 @@
 
   function clearLogs() {
     logs = [];
+    void Clear();
   }
 
   function filteredLogs() {
@@ -87,6 +78,19 @@
   }
 
   onMount(() => {
+    GetEntries()
+      .then((entries) => {
+        logs = entries.map((entry) => ({
+          level: entry.level as LogLevel,
+          message: entry.message,
+          timestamp: entry.timestamp,
+        }));
+        setTimeout(scrollToBottom, 0);
+      })
+      .catch((err) => {
+        console.error("Failed to load logs:", err);
+      });
+
     EventsOn("log:line", (entry: LogEntry) => {
       logs = [...logs, entry];
 
@@ -110,23 +114,23 @@
 </script>
 
 {#if visible}
-  <div class="border-t border-outline bg-black flex flex-col">
+  <div class="border-outline flex flex-col border-t bg-black">
     <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-2 bg-surface border-b border-outline">
+    <div class="bg-surface border-outline flex items-center justify-between border-b px-4 py-2">
       <div class="flex items-center gap-2">
-        <span class="font-mono text-sm text-bright">Logs</span>
-        <span class="font-mono text-xs text-muted">({logs.length})</span>
+        <span class="text-bright font-mono text-sm">Logs</span>
+        <span class="text-muted font-mono text-xs">({logs.length})</span>
       </div>
 
       <div class="flex items-center gap-2">
         <!-- Level Filter Buttons -->
-        <div class="flex items-center gap-1 mr-4">
+        <div class="mr-4 flex items-center gap-1">
           {#each ["ALL", ...levels] as level}
             <button
               onclick={() => setFilterLevel(level as LogLevel | "ALL")}
-              class="font-mono text-xs px-2 py-1 rounded transition-colors {filterLevel === level
+              class="rounded px-2 py-1 font-mono text-xs transition-colors {filterLevel === level
                 ? getLevelBgColor(level) + ' text-white'
-                : 'bg-black text-muted hover:text-bright'}">
+                : 'text-muted hover:text-bright bg-black'}">
               {level}
             </button>
           {/each}
@@ -135,9 +139,9 @@
         <!-- Scroll Lock Toggle -->
         <button
           onclick={toggleScrollLock}
-          class="font-mono text-xs px-2 py-1 rounded transition-colors {scrollLock
+          class="rounded px-2 py-1 font-mono text-xs transition-colors {scrollLock
             ? 'bg-yellow-600 text-white'
-            : 'bg-black text-muted hover:text-bright'}"
+            : 'text-muted hover:text-bright bg-black'}"
           title={scrollLock ? "Scroll locked" : "Auto-scroll enabled"}>
           {#if scrollLock}
             <span class="flex items-center">
@@ -153,7 +157,7 @@
         <!-- Clear Button -->
         <button
           onclick={clearLogs}
-          class="font-mono text-xs px-2 py-1 rounded bg-black text-muted hover:text-red-400 transition-colors">
+          class="text-muted rounded bg-black px-2 py-1 font-mono text-xs transition-colors hover:text-red-400">
           Clear
         </button>
       </div>
@@ -162,12 +166,12 @@
     <!-- Log Container -->
     <div
       bind:this={logContainer}
-      class="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-0.5"
+      class="flex-1 space-y-0.5 overflow-y-auto p-2 font-mono text-xs"
       style="max-height: 200px;">
       {#each filteredLogs() as log}
-        <div class="flex items-start gap-2 hover:bg-white/5 px-1 rounded">
+        <div class="flex items-start gap-2 rounded px-1 hover:bg-white/5">
           <span class="text-muted shrink-0">{formatTimestamp(log.timestamp)}</span>
-          <span class="{getLevelColor(log.level)} shrink-0 w-12">[{log.level}]</span>
+          <span class="{getLevelColor(log.level)} w-12 shrink-0">[{log.level}]</span>
           <span class="text-bright break-all">{log.message}</span>
         </div>
       {:else}

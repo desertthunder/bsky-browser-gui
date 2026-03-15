@@ -4,7 +4,7 @@
   import "@fontsource-variable/lora";
   import { onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
-  import { Login, Whoami, IsAuthenticated } from "../wailsjs/go/main/AuthService";
+  import { Login, Logout, Whoami, IsAuthenticated } from "../wailsjs/go/main/AuthService";
   import { Refresh, IsIndexing } from "../wailsjs/go/main/IndexService";
   import { Search, CountPosts } from "../wailsjs/go/main/SearchService";
   import { EventsOn } from "../wailsjs/runtime/runtime";
@@ -15,6 +15,8 @@
   import { toaster } from "./lib/stores/toast.svelte";
   import EmptyState from "./lib/components/EmptyState.svelte";
   import ProgressBar from "./lib/components/ProgressBar.svelte";
+  import PostDetailPanel from "./lib/components/PostDetailPanel.svelte";
+  import { parseDateValue } from "./lib/date";
   import type { main } from "../wailsjs/go/models";
   import type { IndexStats } from "./lib/types";
 
@@ -37,6 +39,7 @@
   let sortDirection = $state<"asc" | "desc">("desc");
   let isSearching = $state(false);
   let showLogs = $state(false);
+  let selectedPost = $state<main.SearchResult | null>(null);
 
   onMount(() => {
     document.addEventListener("keydown", handleGlobalKeydown);
@@ -129,6 +132,24 @@
     }
   }
 
+  async function handleLogout() {
+    try {
+      await Logout();
+      isLoggedIn = false;
+      authInfo = null;
+      searchResults = [];
+      totalPosts = 0;
+      searchQuery = "";
+      searchSource = "";
+      handle = "";
+      selectedPost = null;
+      status = "Please log in to continue";
+      toaster.success("Logged out");
+    } catch (err) {
+      toaster.error(`Logout failed: ${err}`);
+    }
+  }
+
   async function loadPosts() {
     try {
       totalPosts = await CountPosts();
@@ -144,6 +165,9 @@
     try {
       const results = await Search(query.trim(), source);
       searchResults = sortResults(results);
+      if (selectedPost && !results.some((post) => post.uri === selectedPost?.uri)) {
+        selectedPost = null;
+      }
     } catch (err) {
       console.error("Search failed:", err);
       searchResults = [];
@@ -159,8 +183,8 @@
       let bVal: any = b[sortColumn as keyof main.SearchResult];
 
       if (sortColumn === "created_at" || sortColumn === "indexed_at") {
-        aVal = aVal ? new Date(aVal).getTime() : 0;
-        bVal = bVal ? new Date(bVal).getTime() : 0;
+        aVal = parseDateValue(aVal)?.getTime() ?? 0;
+        bVal = parseDateValue(bVal)?.getTime() ?? 0;
       }
 
       if (typeof aVal === "number" && typeof bVal === "number") {
@@ -220,20 +244,20 @@
 
 <Toaster />
 
-<main class="min-h-screen bg-black text-bright flex flex-col">
+<main class="text-bright flex min-h-screen flex-col bg-black">
   {#if !isLoggedIn}
     <!-- Login View -->
-    <div class="flex-1 flex items-center justify-center p-4" transition:fade={{ duration: 300 }}>
+    <div class="flex flex-1 items-center justify-center p-4" transition:fade={{ duration: 300 }}>
       <div class="w-full max-w-md">
-        <div class="text-center mb-8">
-          <h1 class="font-serif text-4xl mb-2">bsky-browser</h1>
-          <p class="font-mono text-muted text-sm">Search your Bluesky bookmarks and likes</p>
+        <div class="mb-8 text-center">
+          <h1 class="mb-2 font-serif text-4xl">bsky-browser</h1>
+          <p class="text-muted font-mono text-sm">Search your Bluesky bookmarks and likes</p>
         </div>
 
-        <div class="bg-surface border border-outline rounded-lg p-6">
+        <div class="bg-surface border-outline rounded-lg border p-6">
           <div class="space-y-4">
             <div>
-              <label for="handle" class="block font-sans text-sm text-muted mb-2"> Bluesky Handle </label>
+              <label for="handle" class="text-muted mb-2 block font-sans text-sm"> Bluesky Handle </label>
               <input
                 id="handle"
                 type="text"
@@ -241,13 +265,13 @@
                 bind:value={handle}
                 onkeydown={handleKeydown}
                 disabled={isLoading}
-                class="w-full bg-black border border-outline rounded px-4 py-2 font-mono text-sm text-bright placeholder-[#333] focus:outline-none focus:border-[#333] disabled:opacity-50" />
+                class="border-outline text-bright w-full rounded border bg-black px-4 py-2 font-mono text-sm placeholder-[#333] focus:border-[#333] focus:outline-none disabled:opacity-50" />
             </div>
 
             <button
               onclick={handleLogin}
               disabled={isLoading || !handle.trim()}
-              class="w-full bg-surface border border-outline hover:bg-outline text-bright font-sans py-2 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              class="bg-surface border-outline hover:bg-outline text-bright w-full rounded border px-4 py-2 font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               {#if isLoading}
                 <span class="animate-pulse">Authenticating...</span>
               {:else}
@@ -257,8 +281,8 @@
           </div>
 
           {#if status}
-            <div class="mt-4 p-3 bg-black border border-outline rounded" transition:slide={{ duration: 200 }}>
-              <p class="font-mono text-xs text-muted">{status}</p>
+            <div class="border-outline mt-4 rounded border bg-black p-3" transition:slide={{ duration: 200 }}>
+              <p class="text-muted font-mono text-xs">{status}</p>
             </div>
           {/if}
         </div>
@@ -266,19 +290,19 @@
     </div>
   {:else}
     <!-- Main View -->
-    <div class="flex-1 flex flex-col">
+    <div class="flex flex-1 flex-col">
       <!-- Header -->
-      <header class="border-b border-outline bg-surface px-6 py-4">
+      <header class="border-secondary bg-surface border-b px-6 py-4">
         <div class="flex items-center justify-between">
           <div>
             <h1 class="font-serif text-xl">bsky-browser</h1>
-            <p class="font-mono text-xs text-muted">@{authInfo?.handle} · {totalPosts} posts indexed</p>
+            <p class="text-muted font-mono text-xs">@{authInfo?.handle} · {totalPosts} posts indexed</p>
           </div>
 
           <div class="flex items-center gap-3">
             <button
               onclick={() => (showLogs = !showLogs)}
-              class="font-mono text-xs px-3 py-2 rounded bg-surface border border-outline hover:bg-outline text-bright transition-colors {showLogs
+              class="bg-surface border-outline hover:bg-outline text-bright rounded border px-3 py-2 font-mono text-xs transition-colors {showLogs
                 ? 'bg-[#333]'
                 : ''}">
               {#if showLogs}
@@ -295,20 +319,20 @@
             </button>
 
             <div class="flex items-center gap-2">
-              <label for="refreshLimit" class="font-sans text-xs text-muted">Limit:</label>
+              <label for="refreshLimit" class="text-muted font-sans text-xs">Limit:</label>
               <input
                 id="refreshLimit"
                 type="number"
                 min="0"
                 bind:value={refreshLimit}
                 disabled={isIndexing}
-                class="w-20 bg-black border border-outline rounded px-2 py-1 font-mono text-sm text-bright focus:outline-none focus:border-[#333] disabled:opacity-50" />
+                class="border-outline text-bright w-20 rounded border bg-black px-2 py-1 font-mono text-sm focus:border-[#333] focus:outline-none disabled:opacity-50" />
             </div>
 
             <button
               onclick={handleRefresh}
               disabled={isIndexing}
-              class="bg-surface border border-outline hover:bg-outline text-bright font-sans py-2 px-4 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              class="bg-surface border-outline hover:bg-outline text-bright rounded border px-4 py-2 font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               {#if isIndexing}
                 <span class="animate-pulse">Refreshing...</span>
               {:else}
@@ -318,23 +342,54 @@
                 </span>
               {/if}
             </button>
+
+            <button
+              onclick={handleLogout}
+              class="bg-surface border-outline hover:bg-outline text-bright rounded border px-4 py-2 font-sans transition-colors">
+              <span class="flex items-center gap-2">
+                <i class="i-ri-logout-box-r-line"></i>
+                <span>Logout</span>
+              </span>
+            </button>
           </div>
         </div>
       </header>
 
-      <div class="px-6 py-4 border-b border-secondary">
+      <div class="border-outline border-b px-6 py-4">
         <SearchBar bind:query={searchQuery} bind:source={searchSource} onSearch={performSearch} />
       </div>
 
-      <main class="flex-1 p-6 overflow-hidden">
+      <main class="flex-1 overflow-hidden p-6">
         {#if isSearching}
-          <div class="flex items-center justify-center h-full">
-            <span class="font-sans text-muted animate-pulse">Searching...</span>
+          <div class="flex h-full items-center justify-center">
+            <span class="text-muted animate-pulse font-sans">Searching...</span>
           </div>
         {:else if totalPosts === 0}
           <EmptyState onRefresh={handleRefresh} />
         {:else}
-          <DataTable posts={searchResults} {sortColumn} {sortDirection} onSort={handleSort} />
+          <div class="flex h-full min-h-0 flex-col gap-6 xl:flex-row">
+            <div class="min-h-0 min-w-0 flex-1">
+              <DataTable
+                posts={searchResults}
+                {sortColumn}
+                {sortDirection}
+                selectedPostURI={selectedPost?.uri ?? null}
+                onSort={handleSort}
+                onOpenPost={(post) => {
+                  selectedPost = post;
+                }} />
+            </div>
+
+            {#if selectedPost}
+              <div class="min-h-88 xl:h-full" transition:slide={{ axis: "x", duration: 220 }}>
+                <PostDetailPanel
+                  post={selectedPost}
+                  onClose={() => {
+                    selectedPost = null;
+                  }} />
+              </div>
+            {/if}
+          </div>
         {/if}
       </main>
 

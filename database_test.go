@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	_ "modernc.org/sqlite"
 )
 
 func openTestDB(t *testing.T) {
@@ -64,6 +66,9 @@ func TestSearchPostsBrowseMode(t *testing.T) {
 	}
 	if results[0].URI != posts[1].URI {
 		t.Fatalf("SearchPosts(empty) first URI = %q, want %q", results[0].URI, posts[1].URI)
+	}
+	if results[0].CreatedAt.IsZero() {
+		t.Fatal("SearchPosts(empty) CreatedAt is zero, want parsed timestamp")
 	}
 
 	starResults, err := SearchPosts("*", "saved")
@@ -135,5 +140,69 @@ func TestSQLiteOAuthStorePersistsSession(t *testing.T) {
 	deleted, err := store.GetSession(context.Background(), did, session.SessionID)
 	if err == nil || deleted != nil {
 		t.Fatalf("GetSession() after delete = (%v, %v), want error", deleted, err)
+	}
+}
+
+func TestOpenMigratesLegacyPostsTableWithoutFacets(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+
+	legacyDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+
+	legacySchema := `
+		CREATE TABLE posts (
+			uri TEXT PRIMARY KEY,
+			cid TEXT NOT NULL,
+			author_did TEXT NOT NULL,
+			author_handle TEXT NOT NULL,
+			text TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL,
+			like_count INTEGER DEFAULT 0,
+			repost_count INTEGER DEFAULT 0,
+			reply_count INTEGER DEFAULT 0,
+			source TEXT NOT NULL CHECK(source IN ('saved', 'liked')),
+			indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`
+
+	if _, err := legacyDB.Exec(legacySchema); err != nil {
+		t.Fatalf("creating legacy schema failed: %v", err)
+	}
+	if err := legacyDB.Close(); err != nil {
+		t.Fatalf("legacyDB.Close() error = %v", err)
+	}
+
+	if err := Open(dbPath); err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	})
+
+	hasColumn, err := columnExists("posts", "facets")
+	if err != nil {
+		t.Fatalf("columnExists() error = %v", err)
+	}
+	if !hasColumn {
+		t.Fatal("posts.facets missing after migration")
+	}
+
+	post := &Post{
+		URI:          "at://did:plc:test/app.bsky.feed.post/legacy",
+		CID:          "cid-legacy",
+		AuthorDID:    "did:plc:test",
+		AuthorHandle: "legacy.test",
+		Text:         "legacy post",
+		CreatedAt:    time.Now().UTC(),
+		Source:       "saved",
+		Facets:       `[]`,
+	}
+
+	if err := InsertPost(post); err != nil {
+		t.Fatalf("InsertPost() after migration error = %v", err)
 	}
 }

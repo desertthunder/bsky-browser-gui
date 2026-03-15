@@ -6,6 +6,8 @@ export function IsAuthenticated():Promise<boolean>;
 
 export function Login(arg1:string):Promise<void>;
 
+export function Logout():Promise<void>;
+
 export function RefreshSession():Promise<void>;
 
 export function Whoami(arg1:boolean):Promise<main.Auth>;

@@ -19,61 +19,142 @@ var migrationsFS embed.FS
 
 // Open opens the database connection and runs migrations
 func Open(dbPath string) error {
-	fmt.Printf("opening database: %s\n", dbPath)
+	LogInfof("opening database: %s", dbPath)
 
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create database directory: %w", err)
+		return wrapDBError("failed to create database directory", err)
 	}
 
 	var err error
 	db, err = sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)")
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return wrapDBError("failed to open database", err)
 	}
 
 	if err := db.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database: %w", err)
+		return wrapDBError("failed to ping database", err)
 	}
 
 	_, err = db.Exec("PRAGMA journal_mode=WAL")
 	if err != nil {
-		return fmt.Errorf("failed to enable WAL mode: %w", err)
+		return wrapDBError("failed to enable WAL mode", err)
 	}
 
-	fmt.Println("database connection established with WAL mode")
+	LogInfo("database connection established with WAL mode")
 
 	if err := runMigrations(); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+		return wrapDBError("failed to run migrations", err)
 	}
 
-	fmt.Println("database migrations completed successfully")
+	LogInfo("database migrations completed successfully")
 	return nil
 }
 
 func runMigrations() error {
 	content, err := migrationsFS.ReadFile("migrations/000_initial_schema.sql")
 	if err != nil {
-		return fmt.Errorf("failed to read migration: %w", err)
+		return wrapDBError("failed to read migration", err)
 	}
 
 	if _, err := db.Exec(string(content)); err != nil {
-		return fmt.Errorf("failed to execute migration: %w", err)
+		return wrapDBError("failed to execute migration", err)
+	}
+
+	if err := ensureSchemaCompatibility(); err != nil {
+		return wrapDBError("failed to upgrade schema", err)
 	}
 
 	return nil
 }
 
+func ensureSchemaCompatibility() error {
+	columnsByTable := map[string][]struct {
+		name       string
+		definition string
+	}{
+		"posts": {
+			{name: "facets", definition: "TEXT"},
+		},
+		"auth": {
+			{name: "session_id", definition: "TEXT"},
+			{name: "auth_server_url", definition: "TEXT"},
+			{name: "auth_server_token_endpoint", definition: "TEXT"},
+			{name: "auth_server_revocation_endpoint", definition: "TEXT"},
+			{name: "dpop_auth_nonce", definition: "TEXT"},
+			{name: "dpop_host_nonce", definition: "TEXT"},
+			{name: "dpop_private_key", definition: "TEXT"},
+		},
+	}
+
+	for table, columns := range columnsByTable {
+		exists, err := tableExists(table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+
+		for _, column := range columns {
+			hasColumn, err := columnExists(table, column.name)
+			if err != nil {
+				return err
+			}
+			if hasColumn {
+				continue
+			}
+
+			query := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column.name, column.definition)
+			if _, err := db.Exec(query); err != nil {
+				return wrapDBError("failed to add "+table+"."+column.name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func tableExists(table string) (bool, error) {
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func columnExists(table, column string) (bool, error) {
+	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+
+		if name == column {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
+}
+
 // Close closes the database connection
 func Close() error {
-	fmt.Println("closing database connection")
+	LogInfo("closing database connection")
 	if db != nil {
 		err := db.Close()
 		if err != nil {
-			fmt.Printf("failed to close database: %v\n", err)
+			LogErrorf("failed to close database: %v", err)
 			return err
 		}
-		fmt.Println("database connection closed")
+		LogInfo("database connection closed")
 	}
 	return nil
 }
@@ -90,16 +171,16 @@ func PostExists(uri string) (bool, error) {
 
 // InsertPost inserts a post into the database
 func InsertPost(post *Post) error {
-	fmt.Printf("inserting post: %s by %s\n", post.URI, post.AuthorHandle)
+	LogInfof("inserting post: %s by %s", post.URI, post.AuthorHandle)
 
 	exists, err := PostExists(post.URI)
 	if err != nil {
-		fmt.Printf("failed to check if post exists: %s, error: %v\n", post.URI, err)
+		LogErrorf("failed to check if post exists: %s, error: %v", post.URI, err)
 		return err
 	}
 
 	if exists {
-		fmt.Printf("skipping already indexed post: %s\n", post.URI)
+		LogDebugf("skipping already indexed post: %s", post.URI)
 		return nil
 	}
 
@@ -135,7 +216,7 @@ func InsertPost(post *Post) error {
 	)
 
 	if err != nil {
-		fmt.Printf("failed to insert post: %s, error: %v\n", post.URI, err)
+		LogErrorf("failed to insert post: %s, error: %v", post.URI, err)
 	}
 
 	return err
@@ -143,7 +224,7 @@ func InsertPost(post *Post) error {
 
 // UpsertAuth inserts or updates auth information
 func UpsertAuth(auth *Auth) error {
-	fmt.Printf("upserting auth: %s (%s)\n", auth.DID, auth.Handle)
+	LogInfof("upserting auth: %s (%s)", auth.DID, auth.Handle)
 
 	query := `
 		INSERT INTO auth (did, handle, access_jwt, refresh_jwt, pds_url, session_id,
@@ -181,15 +262,21 @@ func UpsertAuth(auth *Auth) error {
 	)
 
 	if err != nil {
-		fmt.Printf("failed to upsert auth: %s, error: %v\n", auth.DID, err)
+		LogErrorf("failed to upsert auth: %s, error: %v", auth.DID, err)
 	}
 
 	return err
 }
 
+// ClearAuth removes all persisted auth rows for this desktop client.
+func ClearAuth() error {
+	_, err := db.Exec("DELETE FROM auth")
+	return err
+}
+
 // GetAuth loads the auth record from the database
 func GetAuth() (*Auth, error) {
-	fmt.Println("loading auth from database")
+	LogInfo("loading auth from database")
 
 	query := `SELECT did, handle, access_jwt, refresh_jwt, pds_url, session_id,
 			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint,
@@ -201,15 +288,15 @@ func GetAuth() (*Auth, error) {
 	auth, err := getAuthByQuery(query)
 
 	if err == sql.ErrNoRows {
-		fmt.Println("no auth record found in database")
+		LogInfo("no auth record found in database")
 		return nil, nil
 	}
 	if err != nil {
-		fmt.Printf("failed to load auth: %v\n", err)
+		LogErrorf("failed to load auth: %v", err)
 		return nil, err
 	}
 
-	fmt.Printf("auth loaded successfully: %s (%s)\n", auth.DID, auth.Handle)
+	LogInfof("auth loaded successfully: %s (%s)", auth.DID, auth.Handle)
 	return auth, nil
 }
 
@@ -279,7 +366,7 @@ func getAuthByQuery(query string, args ...any) (*Auth, error) {
 		auth.DPoPPrivateKey = dpopPrivateKey.String
 	}
 
-	auth.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	auth.UpdatedAt = parseStoredTime(updatedAt)
 	return &auth, nil
 }
 
@@ -290,7 +377,7 @@ func SearchPosts(query string, source string) ([]SearchResult, error) {
 		query = ""
 	}
 
-	fmt.Printf("searching posts: query=%s, source=%s\n", query, source)
+	LogInfof("searching posts: query=%s, source=%s", query, source)
 
 	if query == "" {
 		return listRecentPosts(source)
@@ -310,7 +397,7 @@ func SearchPosts(query string, source string) ([]SearchResult, error) {
 
 	rows, err := db.Query(sqlQuery, query, source, source)
 	if err != nil {
-		fmt.Printf("failed to execute search query: %v\n", err)
+		LogErrorf("failed to execute search query: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -338,12 +425,12 @@ func SearchPosts(query string, source string) ([]SearchResult, error) {
 			return nil, err
 		}
 
-		r.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-		r.IndexedAt, _ = time.Parse("2006-01-02 15:04:05", indexedAt)
+		r.CreatedAt = parseStoredTime(createdAt)
+		r.IndexedAt = parseStoredTime(indexedAt)
 		results = append(results, r)
 	}
 
-	fmt.Printf("search completed: %d results\n", len(results))
+	LogInfof("search completed: %d results", len(results))
 	return results, rows.Err()
 }
 
@@ -357,7 +444,7 @@ func listRecentPosts(source string) ([]SearchResult, error) {
 		LIMIT 25
 	`, source, source)
 	if err != nil {
-		fmt.Printf("failed to list recent posts: %v\n", err)
+		LogErrorf("failed to list recent posts: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -384,26 +471,68 @@ func listRecentPosts(source string) ([]SearchResult, error) {
 			return nil, err
 		}
 
-		r.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-		r.IndexedAt, _ = time.Parse("2006-01-02 15:04:05", indexedAt)
+		r.CreatedAt = parseStoredTime(createdAt)
+		r.IndexedAt = parseStoredTime(indexedAt)
 		results = append(results, r)
 	}
 
-	fmt.Printf("browse completed: %d results\n", len(results))
+	LogInfof("browse completed: %d results", len(results))
 	return results, rows.Err()
+}
+
+func parseStoredTime(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05",
+	}
+
+	for _, layout := range layouts {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed
+		}
+	}
+
+	return time.Time{}
 }
 
 // CountPosts returns the total number of posts in the database
 func CountPosts() (int, error) {
-	fmt.Println("counting posts in database")
+	LogInfo("counting posts in database")
 
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM posts").Scan(&count)
 	if err != nil {
-		fmt.Printf("failed to count posts: %v\n", err)
+		LogErrorf("failed to count posts: %v", err)
 		return 0, err
 	}
 
-	fmt.Printf("post count: %d\n", count)
+	LogInfof("post count: %d", count)
 	return count, nil
+}
+
+func wrapDBError(message string, err error) error {
+	return &dbError{message: message, err: err}
+}
+
+type dbError struct {
+	message string
+	err     error
+}
+
+func (e *dbError) Error() string {
+	return e.message + ": " + e.err.Error()
+}
+
+func (e *dbError) Unwrap() error {
+	return e.err
 }

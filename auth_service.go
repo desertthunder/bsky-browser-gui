@@ -12,7 +12,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // AuthService provides authentication functionality via Wails bindings
@@ -176,9 +175,7 @@ func (s *AuthService) Whoami(force bool) (*Auth, error) {
 		dir := &identity.BaseDirectory{}
 		ident, err := dir.LookupDID(context.Background(), did)
 		if err != nil {
-			if s.ctx != nil {
-				runtime.LogWarningf(s.ctx, "failed to resolve handle for %s: %v", auth.DID, err)
-			}
+			LogWarnf("failed to resolve handle for %s: %v", auth.DID, err)
 			return auth, nil
 		}
 
@@ -234,6 +231,42 @@ func (s *AuthService) RefreshSession() error {
 
 	if err := UpsertAuth(authFromSessionData(session.Data, auth.Handle)); err != nil {
 		return fmt.Errorf("failed to persist refreshed session: %w", err)
+	}
+
+	return nil
+}
+
+// Logout revokes the current session when possible and clears local auth state.
+func (s *AuthService) Logout() error {
+	auth, err := GetAuth()
+	if err != nil {
+		return fmt.Errorf("failed to load auth: %w", err)
+	}
+	if auth == nil {
+		return nil
+	}
+
+	if auth.SessionID != "" {
+		store := NewSQLiteOAuthStore()
+		app := newOAuthApp(store)
+
+		did, err := syntax.ParseDID(auth.DID)
+		if err == nil {
+			session, resumeErr := app.ResumeSession(context.Background(), did, auth.SessionID)
+			if resumeErr == nil {
+				if revokeErr := session.RevokeSession(context.Background()); revokeErr != nil {
+					LogWarnf("failed to revoke remote session for %s: %v", auth.DID, revokeErr)
+				}
+			} else {
+				LogWarnf("failed to resume session for logout (%s): %v", auth.DID, resumeErr)
+			}
+		} else {
+			LogWarnf("failed to parse DID for logout (%s): %v", auth.DID, err)
+		}
+	}
+
+	if err := ClearAuth(); err != nil {
+		return fmt.Errorf("failed to clear auth: %w", err)
 	}
 
 	return nil

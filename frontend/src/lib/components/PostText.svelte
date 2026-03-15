@@ -1,12 +1,7 @@
 <script lang="ts">
   import { parseFacets, renderFacets, truncateRenderedFacets } from "../facets";
 
-  type Props = {
-    text: string;
-    facetsJson?: string;
-    maxLength?: number;
-    class?: string;
-  };
+  type Props = { text: string; facetsJson?: string; maxLength?: number; class?: string };
 
   let { text, facetsJson = "", maxLength = 0, class: className = "" }: Props = $props();
 
@@ -53,7 +48,7 @@
         {facet.text}
       </a>
     {:else}
-      <span>{facet.text}</span>
+      <span class="font-sans">{facet.text}</span>
     {/if}
   {/each}
 </span>

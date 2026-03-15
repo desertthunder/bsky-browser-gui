@@ -40,19 +40,20 @@ func (a *App) startup(ctx context.Context) {
 	if err := a.logService.Initialize(); err != nil {
 		runtime.LogErrorf(a.ctx, "failed to initialize log service: %v", err)
 	} else {
-		// Initialize the global logger with our log service
 		InitLogger(a.logService)
 		LogInfo("Application started")
 	}
 
 	dbPath := getDBPath()
 	if err := Open(dbPath); err != nil {
+		LogErrorf("failed to open database: %v", err)
 		runtime.LogErrorf(a.ctx, "failed to open database: %v", err)
 		return
 	}
 
 	if a.authService.IsAuthenticated() {
 		if err := a.authService.RefreshSession(); err != nil {
+			LogWarnf("token refresh failed on startup: %v", err)
 			runtime.LogWarningf(a.ctx, "token refresh failed on startup: %v", err)
 		}
 	}
@@ -60,11 +61,12 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown is called when the app shuts down
 func (a *App) shutdown(ctx context.Context) {
+	if err := Close(); err != nil {
+		LogErrorf("failed to close database: %v", err)
+		runtime.LogErrorf(ctx, "failed to close database: %v", err)
+	}
 	if err := a.logService.Close(); err != nil {
 		runtime.LogErrorf(ctx, "failed to close log service: %v", err)
-	}
-	if err := Close(); err != nil {
-		runtime.LogErrorf(ctx, "failed to close database: %v", err)
 	}
 }
 

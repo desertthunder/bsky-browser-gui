@@ -66,6 +66,7 @@ func (s *IndexService) Refresh(limit int) error {
 	defer s.indexing.Store(false)
 
 	start := time.Now()
+	LogInfof("index refresh started: limit=%d", limit)
 
 	s.statsMu.Lock()
 	s.stats = IndexStats{}
@@ -108,6 +109,7 @@ func (s *IndexService) Refresh(limit int) error {
 		Elapsed: time.Since(start),
 	}
 
+	LogInfof("index refresh completed: total=%d errors=%d elapsed=%s", result.Total, result.Errors, result.Elapsed)
 	s.emitEvent("index:done", result)
 	return nil
 }
@@ -198,7 +200,6 @@ func (s *IndexService) batchWriter(ch <-chan *PostResult, batchSize int) (int, i
 
 		if result.Post != nil {
 			batch = append(batch, result.Post)
-			s.updateProgress(1, 0, 0)
 
 			if len(batch) >= batchSize {
 				flushBatch()
@@ -217,19 +218,26 @@ type BlueskyClient struct {
 }
 
 // fetchBookmarks writes bookmarks to the provided channel in batches
-func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, _ *IndexService) {
+func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
 	ctx := context.Background()
 	apiClient := c.session.APIClient()
 	var cursor string
+	seenCursors := make(map[string]struct{})
 	batchSize := int64(100)
 	count := 0
 
 	for {
+		LogInfof("fetching bookmarks page: cursor=%q", cursor)
 		resp, err := bsky.BookmarkGetBookmarks(ctx, apiClient, cursor, batchSize)
 		if err != nil {
 			ch <- &PostResult{Error: fmt.Errorf("failed to fetch bookmarks: %w", err)}
 			return
 		}
+		nextCursor := ""
+		if resp.Cursor != nil {
+			nextCursor = *resp.Cursor
+		}
+		LogInfof("fetched bookmarks page: items=%d next_cursor=%q", len(resp.Bookmarks), nextCursor)
 
 		for _, bookmark := range resp.Bookmarks {
 			if bookmark.Item == nil {
@@ -237,6 +245,7 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, _ *I
 			}
 
 			if bookmark.Item.FeedDefs_PostView != nil {
+				svc.updateProgress(1, 0, 0)
 				pv := bookmark.Item.FeedDefs_PostView
 
 				exists, err := PostExists(pv.Uri)
@@ -260,29 +269,49 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, _ *I
 		}
 
 		if resp.Cursor == nil || *resp.Cursor == "" {
+			LogInfof("bookmark fetch complete: processed=%d", count)
 			break
 		}
-		cursor = *resp.Cursor
+
+		nextCursor = *resp.Cursor
+		if nextCursor == cursor {
+			LogWarnf("stopping bookmark pagination because cursor repeated: %s", nextCursor)
+			break
+		}
+		if _, seen := seenCursors[nextCursor]; seen {
+			LogWarnf("stopping bookmark pagination because cursor loop detected: %s", nextCursor)
+			break
+		}
+		seenCursors[nextCursor] = struct{}{}
+		cursor = nextCursor
 	}
 }
 
 // fetchLikes writes likes to the provided channel in batches
-func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, _ *IndexService) {
+func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
 	ctx := context.Background()
 	apiClient := c.session.APIClient()
 	var cursor string
+	seenCursors := make(map[string]struct{})
 	batchSize := int64(100)
 	count := 0
 
 	for {
+		LogInfof("fetching likes page: cursor=%q", cursor)
 		resp, err := bsky.FeedGetActorLikes(ctx, apiClient, c.auth.DID, cursor, batchSize)
 		if err != nil {
 			ch <- &PostResult{Error: fmt.Errorf("failed to fetch likes: %w", err)}
 			return
 		}
+		nextCursor := ""
+		if resp.Cursor != nil {
+			nextCursor = *resp.Cursor
+		}
+		LogInfof("fetched likes page: items=%d next_cursor=%q", len(resp.Feed), nextCursor)
 
 		for _, feedView := range resp.Feed {
 			if feedView.Post != nil {
+				svc.updateProgress(1, 0, 0)
 				pv := feedView.Post
 
 				exists, err := PostExists(pv.Uri)
@@ -306,9 +335,21 @@ func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, _ *Index
 		}
 
 		if resp.Cursor == nil || *resp.Cursor == "" {
+			LogInfof("likes fetch complete: processed=%d", count)
 			break
 		}
-		cursor = *resp.Cursor
+
+		nextCursor = *resp.Cursor
+		if nextCursor == cursor {
+			LogWarnf("stopping likes pagination because cursor repeated: %s", nextCursor)
+			break
+		}
+		if _, seen := seenCursors[nextCursor]; seen {
+			LogWarnf("stopping likes pagination because cursor loop detected: %s", nextCursor)
+			break
+		}
+		seenCursors[nextCursor] = struct{}{}
+		cursor = nextCursor
 	}
 }
 

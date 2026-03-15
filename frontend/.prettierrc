@@ -1,6 +1,8 @@
 {
-  "bracketSameLine": true,
-  "objectWrap": "collapse",
   "printWidth": 120,
-  "tabWidth": 2
+  "objectWrap": "collapse",
+  "tabWidth": 2,
+  "bracketSameLine": true,
+  "plugins": ["prettier-plugin-svelte", "prettier-plugin-tailwindcss"],
+  "overrides": [{ "files": "*.svelte", "options": { "parser": "svelte" } }]
 }

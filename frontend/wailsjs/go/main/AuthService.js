@@ -10,6 +10,10 @@ export function Login(arg1) {
   return window['go']['main']['AuthService']['Login'](arg1);
 }
 
+export function Logout() {
+  return window['go']['main']['AuthService']['Logout']();
+}
+
 export function RefreshSession() {
   return window['go']['main']['AuthService']['RefreshSession']();
 }

@@ -1,7 +1,10 @@
 <!-- markdownlint-disable MD033 -->
 # bsky-browser
 
-Desktop app for searching your Bluesky bookmarks and likes with a local SQLite index, full-text search, rich-text facet rendering, and a built-in log viewer.
+A desktop app for searching your Bluesky bookmarks and likes.
+
+> I made this to stop having to `CTRL`/`CMD`+`F` and infinite scroll through my saved
+> and liked posts.
 
 ## What It Does
 
@@ -14,13 +17,15 @@ Desktop app for searching your Bluesky bookmarks and likes with a local SQLite i
 
 ## Screenshots
 
-![Placeholder for the login screen showing the Bluesky handle field, authentication button, and dark desktop styling](https://placehold.co/1600x1000/111111/EAEAEA?text=Login+Screen)
+![login screen showing the Bluesky handle field, authentication button, and dark desktop styling](./docs/login.png)
 
-![Placeholder for the main search view showing indexed post count, search bar, source filter, and results table after a successful refresh](https://placehold.co/1600x1000/111111/EAEAEA?text=Main+Search+View)
+![filtered results](./docs/filtered.png)
 
-![Placeholder for a results table row with rendered rich-text facets such as links, mentions, and hashtags inside post text](https://placehold.co/1600x1000/111111/EAEAEA?text=Facet+Rendering)
+![main search view showing indexed post count, search bar, source filter, and results table after a successful refresh](./docs/main.png)
 
-![Placeholder for the bottom progress bar and log viewer during an active indexing run with info, warn, and error lines visible](https://placehold.co/1600x1000/111111/EAEAEA?text=Logs+and+Progress)
+![results table row with rendered rich-text facets such as links, mentions, and hashtags inside post text](./docs/facet.png)
+
+![bottom progress bar and log viewer during an active indexing run with info, warn, and error lines visible](./docs/progress.png)
 
 ## Usage
 
