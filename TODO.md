@@ -65,6 +65,6 @@
 - [x] Empty state: show "No posts indexed" with prompt to refresh
 - [x] Error handling: toast/notification for network failures, auth expiry
 - [x] Keyboard shortcuts: `Cmd+K` focus search, `Cmd+R` refresh, `Cmd+L` toggle log viewer
-- [ ] Window title and app icon (`build/appicon.png`)
-- [ ] Production build verification (`wails build` → macOS `.app` bundle)
-- [ ] README with build instructions, screenshots, and usage
+- [x] Window title and app icon (`build/appicon.png`)
+- [x] Production build verification (`wails build` → macOS `.app` bundle)
+- [~] README with build instructions, screenshots, and usage

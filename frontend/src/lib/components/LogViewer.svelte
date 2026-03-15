@@ -4,15 +4,15 @@
 
   type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
-  interface LogEntry {
+  type LogEntry = {
     level: LogLevel;
     message: string;
     timestamp: string;
-  }
+  };
 
-  interface Props {
+  type Props = {
     visible: boolean;
-  }
+  };
 
   let { visible }: Props = $props();
 
@@ -23,20 +23,33 @@
 
   const levels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
 
-  const levelColors: Record<LogLevel, string> = {
-    DEBUG: "text-gray-500",
-    INFO: "text-blue-400",
-    WARN: "text-yellow-400",
-    ERROR: "text-red-400",
-  };
+  function getLevelColor(level: LogLevel): string {
+    switch (level) {
+      case "DEBUG":
+        return "text-gray-500";
+      case "INFO":
+        return "text-primary";
+      case "WARN":
+        return "text-yellow-400";
+      case "ERROR":
+        return "text-red-400";
+    }
+  }
 
-  const levelBgColors: Record<LogLevel | "ALL", string> = {
-    ALL: "bg-gray-700",
-    DEBUG: "bg-gray-600",
-    INFO: "bg-blue-600",
-    WARN: "bg-yellow-600",
-    ERROR: "bg-red-600",
-  };
+  function getLevelBgColor(level: LogLevel | "ALL"): string {
+    switch (level) {
+      case "DEBUG":
+        return "bg-gray-600";
+      case "INFO":
+        return "bg-blue-600";
+      case "WARN":
+        return "bg-yellow-600";
+      case "ERROR":
+        return "bg-red-600";
+      default:
+        return "bg-gray-600";
+    }
+  }
 
   function formatTimestamp(timestamp: string): string {
     const date = new Date(timestamp);
@@ -112,7 +125,7 @@
             <button
               onclick={() => setFilterLevel(level as LogLevel | "ALL")}
               class="font-mono text-xs px-2 py-1 rounded transition-colors {filterLevel === level
-                ? levelBgColors[level] + ' text-white'
+                ? getLevelBgColor(level) + ' text-white'
                 : 'bg-black text-muted hover:text-bright'}">
               {level}
             </button>
@@ -154,7 +167,7 @@
       {#each filteredLogs() as log}
         <div class="flex items-start gap-2 hover:bg-white/5 px-1 rounded">
           <span class="text-muted shrink-0">{formatTimestamp(log.timestamp)}</span>
-          <span class="{levelColors[log.level]} shrink-0 w-12">[{log.level}]</span>
+          <span class="{getLevelColor(log.level)} shrink-0 w-12">[{log.level}]</span>
           <span class="text-bright break-all">{log.message}</span>
         </div>
       {:else}

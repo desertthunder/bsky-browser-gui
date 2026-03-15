@@ -6,7 +6,7 @@
   function getTypeStyle(kind: ToastKind) {
     switch (kind) {
       case "info":
-        return "bg-blue-500/20 border-blue-500/50 text-blue-400";
+        return "bg-primary/20 border-primary/50 text-primary";
       case "success":
         return "bg-green-500/20 border-green-500/50 text-green-400";
       case "warning":

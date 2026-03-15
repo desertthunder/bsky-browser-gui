@@ -76,33 +76,38 @@ export function renderFacets(text: string, facets: Facet[]): RenderedFacet[] {
     const facetStart = byteOffsetToCharIndex(text, facet.index.byteStart);
     const facetEnd = byteOffsetToCharIndex(text, facet.index.byteEnd);
     const facetText = text.slice(facetStart, facetEnd);
+    let renderedFacet: RenderedFacet = { type: "text", text: facetText };
 
     for (const feature of facet.features) {
       const type = feature.$type;
 
       if (type === "app.bsky.richtext.facet#link") {
-        result.push({ type: "link", text: facetText, href: feature.uri });
-      } else if (type === "app.bsky.richtext.facet#mention") {
-        result.push({
+        renderedFacet = { type: "link", text: facetText, href: feature.uri };
+        break;
+      }
+
+      if (type === "app.bsky.richtext.facet#mention") {
+        renderedFacet = {
           type: "mention",
           text: facetText,
           did: feature.did,
           href: `https://bsky.app/profile/${feature.did}`,
-        });
-      } else if (type === "app.bsky.richtext.facet#tag") {
-        result.push({
+        };
+        break;
+      }
+
+      if (type === "app.bsky.richtext.facet#tag") {
+        renderedFacet = {
           type: "tag",
           text: facetText,
           tag: feature.tag,
           href: `https://bsky.app/search?q=%23${encodeURIComponent(feature.tag)}`,
-        });
-      } else {
-        result.push({ type: "text", text: facetText });
+        };
+        break;
       }
-
-      // TODO: parse ALL features
-      break;
     }
+
+    result.push(renderedFacet);
 
     lastByteEnd = facet.index.byteEnd;
   }

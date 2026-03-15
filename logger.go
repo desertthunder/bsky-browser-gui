@@ -22,14 +22,12 @@ func InitLogger(service *LogService) {
 		service:   service,
 	}
 
-	// Redirect standard log to our logger
 	log.SetOutput(multiWriter)
 }
 
 // GetLogger returns the global app logger
 func GetLogger() *AppLogger {
 	if appLogger == nil {
-		// Fallback to stdout if not initialized
 		return &AppLogger{
 			stdLogger: log.New(os.Stdout, "", log.LstdFlags),
 		}

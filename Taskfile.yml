@@ -24,9 +24,9 @@ tasks:
   init:
     desc: Initialize the project (install dependencies)
     cmds:
-      - cd frontend && npm install
+      - cd frontend && pnpm install
 
   check:
     desc: Check TypeScript and Svelte
     cmds:
-      - cd frontend && npm run check
+      - cd frontend && pnpm check

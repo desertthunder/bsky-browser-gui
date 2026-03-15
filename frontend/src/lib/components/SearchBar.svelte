@@ -18,12 +18,6 @@
     onSearch(query, source);
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter") {
-      onSearch(query, source);
-    }
-  }
-
   function handleClick(src: string) {
     source = src;
     onSearch(query, source);
@@ -33,10 +27,11 @@
 <form onsubmit={handleSubmit} class="flex items-center gap-3">
   <div class="flex-1 relative">
     <input
-      type="text"
+      id="search-posts"
+      type="search"
       placeholder="Search posts..."
       bind:value={query}
-      onkeydown={handleKeydown}
+      enterkeyhint="search"
       class="w-full bg-black border border-outline rounded-lg px-4 py-2.5 font-mono text-sm text-muted placeholder-[#333] focus:outline-none focus:border-[#333]" />
     <div class="absolute right-3 top-1/2 -translate-y-1/2">
       <kbd class="font-mono text-xs text-muted bg-surface px-2 py-0.5 rounded border border-outline">⌘K</kbd>

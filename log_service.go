@@ -59,7 +59,6 @@ func (w *LogWriter) Write(p []byte) (n int, err error) {
 			continue
 		}
 
-		// Parse the log level from the line
 		level := w.parseLevel(line)
 
 		entry := LogEntry{
@@ -98,14 +97,12 @@ func NewLogService() *LogService {
 	}
 }
 
-// SetContext sets the Wails context for event emission
-func (s *LogService) SetContext(ctx context.Context) {
+func (s *LogService) setContext(ctx context.Context) {
 	s.ctx = ctx
 }
 
 // Initialize sets up the log service with a file writer
 func (s *LogService) Initialize() error {
-	// Open log file
 	logPath := s.getLogPath()
 	logDir := filepath.Dir(logPath)
 	if err := os.MkdirAll(logDir, 0755); err != nil {
@@ -118,9 +115,7 @@ func (s *LogService) Initialize() error {
 	}
 	s.file = file
 
-	// Create the log writer
 	s.writer = &LogWriter{service: s}
-
 	return nil
 }
 
@@ -201,14 +196,12 @@ func (s *LogService) addEntry(entry LogEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Only add if level is >= current level
 	if !s.shouldLog(entry.Level) {
 		return
 	}
 
 	s.entries = append(s.entries, entry)
 
-	// Trim if exceeding max entries
 	if len(s.entries) > s.maxEntries {
 		s.entries = s.entries[len(s.entries)-s.maxEntries:]
 	}

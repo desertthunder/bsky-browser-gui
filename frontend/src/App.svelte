@@ -14,11 +14,11 @@
   import Toaster from "./lib/components/Toast.svelte";
   import { toaster } from "./lib/stores/toast.svelte";
   import EmptyState from "./lib/components/EmptyState.svelte";
+  import ProgressBar from "./lib/components/ProgressBar.svelte";
   import type { main } from "../wailsjs/go/models";
+  import type { IndexStats } from "./lib/types";
 
   type AuthInfo = { handle: string; did: string };
-
-  type IndexStats = { fetched: number; inserted: number; errors: number; total: number };
 
   let handle = $state("");
   let isLoading = $state(false);
@@ -197,9 +197,10 @@
   function handleGlobalKeydown(event: KeyboardEvent) {
     if ((event.metaKey || event.ctrlKey) && event.key === "k") {
       event.preventDefault();
-      const searchInput = document.querySelector('input[type="search"]') as HTMLInputElement;
+      const searchInput = document.getElementById("search-posts") as HTMLInputElement | null;
       if (searchInput) {
         searchInput.focus();
+        searchInput.select();
       }
     }
 
@@ -321,13 +322,11 @@
         </div>
       </header>
 
-      <!-- Search Bar -->
-      <div class="px-6 py-4 border-b border-outline">
+      <div class="px-6 py-4 border-b border-secondary">
         <SearchBar bind:query={searchQuery} bind:source={searchSource} onSearch={performSearch} />
       </div>
 
-      <!-- Main Content -->
-      <div class="flex-1 p-6 overflow-hidden">
+      <main class="flex-1 p-6 overflow-hidden">
         {#if isSearching}
           <div class="flex items-center justify-center h-full">
             <span class="font-sans text-muted animate-pulse">Searching...</span>
@@ -337,45 +336,16 @@
         {:else}
           <DataTable posts={searchResults} {sortColumn} {sortDirection} onSort={handleSort} />
         {/if}
-      </div>
+      </main>
 
-      <!-- Log Viewer -->
       {#if showLogs}
         <div transition:slide={{ duration: 300 }}>
           <LogViewer visible={showLogs} />
         </div>
       {/if}
 
-      <!-- Progress Bar (bottom pinned) -->
       {#if showProgress}
-        <div class="border-t border-outline bg-surface px-6 py-3" transition:slide={{ duration: 300 }}>
-          <div class="flex items-center justify-between mb-2">
-            <span class="font-sans text-sm text-muted">
-              <!-- {isIndexing ? "Indexing..." : "Indexing complete"} -->
-              {#if isIndexing}
-                <span class="animate-pulse">Indexing...</span>
-              {:else}
-                <span class="flex items-center gap-2">
-                  <i class="i-ri-check-line text-emerald-400"></i>
-                  <span>Indexing complete</span>
-                </span>
-              {/if}
-            </span>
-            <span class="font-mono text-xs text-muted">
-              {indexStats.inserted} inserted / {indexStats.fetched} fetched
-              {#if indexStats.errors > 0}
-                <span class="text-red-500">({indexStats.errors} errors)</span>
-              {/if}
-            </span>
-          </div>
-
-          <div class="w-full h-1 bg-black rounded-full overflow-hidden">
-            <div
-              class="h-full bg-[#333] transition-all duration-300 ease-out"
-              style="width: {indexStats.fetched > 0 ? (indexStats.inserted / indexStats.fetched) * 100 : 0}%">
-            </div>
-          </div>
-        </div>
+        <ProgressBar {isIndexing} {indexStats} />
       {/if}
     </div>
   {/if}

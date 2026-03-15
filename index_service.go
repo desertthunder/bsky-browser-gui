@@ -49,8 +49,7 @@ func NewIndexService() *IndexService {
 	return &IndexService{}
 }
 
-// SetContext sets the Wails context for event emission
-func (s *IndexService) SetContext(ctx context.Context) {
+func (s *IndexService) setContext(ctx context.Context) {
 	s.ctx = ctx
 }
 

@@ -15,14 +15,14 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
-		Title:            "bsky-browser-gui",
+		Title:            "bsky-browser",
 		Width:            1024,
 		Height:           768,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
-		Bind:             []any{app, app.authService, app.indexService, app.searchService, app.logService},
+		Bind:             []any{app, app.authService, app.indexService, app.searchService},
 	})
 
 	if err != nil {

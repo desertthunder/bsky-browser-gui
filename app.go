@@ -32,8 +32,9 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	a.indexService.SetContext(ctx)
-	a.logService.SetContext(ctx)
+	a.authService.setContext(ctx)
+	a.indexService.setContext(ctx)
+	a.logService.setContext(ctx)
 
 	// Initialize log service first
 	if err := a.logService.Initialize(); err != nil {

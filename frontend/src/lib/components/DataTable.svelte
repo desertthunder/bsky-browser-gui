@@ -111,8 +111,8 @@
             <td class="px-4 py-3">
               <span
                 class="font-sans text-xs px-2 py-0.5 rounded-full {post.source === 'saved'
-                  ? 'bg-blue-500/20 text-blue-400'
-                  : 'bg-pink-500/20 text-pink-400'}">
+                  ? 'bg-primary/20 text-primary'
+                  : 'bg-secondary/20 text-secondary'}">
                 {post.source}
               </span>
             </td>

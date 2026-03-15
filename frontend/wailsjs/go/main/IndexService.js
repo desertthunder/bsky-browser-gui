@@ -9,7 +9,3 @@ export function IsIndexing() {
 export function Refresh(arg1) {
   return window['go']['main']['IndexService']['Refresh'](arg1);
 }
-
-export function SetContext(arg1) {
-  return window['go']['main']['IndexService']['SetContext'](arg1);
-}

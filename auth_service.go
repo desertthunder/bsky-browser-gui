@@ -12,10 +12,12 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // AuthService provides authentication functionality via Wails bindings
 type AuthService struct {
+	ctx      context.Context
 	app      *oauth.ClientApp
 	server   *http.Server
 	listener net.Listener
@@ -30,6 +32,10 @@ func NewAuthService() *AuthService {
 		codeChan: make(chan string, 1),
 		errChan:  make(chan error, 1),
 	}
+}
+
+func (s *AuthService) setContext(ctx context.Context) {
+	s.ctx = ctx
 }
 
 // Login initiates OAuth login flow for the given handle
@@ -151,9 +157,7 @@ func (s *AuthService) exchangeCode(ctx context.Context, data string) error {
 	return nil
 }
 
-// Whoami returns the current authenticated user, optionally resolving handle from DID
-//
-// TODO: store [context.Context] in [AuthService] to be able to use wails' runtime.LogWarningf
+// Whoami returns the current authenticated user, optionally resolving handle from DID.
 func (s *AuthService) Whoami(force bool) (*Auth, error) {
 	auth, err := GetAuth()
 	if err != nil {
@@ -172,6 +176,9 @@ func (s *AuthService) Whoami(force bool) (*Auth, error) {
 		dir := &identity.BaseDirectory{}
 		ident, err := dir.LookupDID(context.Background(), did)
 		if err != nil {
+			if s.ctx != nil {
+				runtime.LogWarningf(s.ctx, "failed to resolve handle for %s: %v", auth.DID, err)
+			}
 			return auth, nil
 		}
 
