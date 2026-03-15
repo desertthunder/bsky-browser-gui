@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -193,14 +194,51 @@ func GetAuth() (*Auth, error) {
 	query := `SELECT did, handle, access_jwt, refresh_jwt, pds_url, session_id,
 			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint,
 			  dpop_auth_nonce, dpop_host_nonce, dpop_private_key, updated_at
-			  FROM auth LIMIT 1`
+			  FROM auth
+			  ORDER BY updated_at DESC
+			  LIMIT 1`
 
+	auth, err := getAuthByQuery(query)
+
+	if err == sql.ErrNoRows {
+		fmt.Println("no auth record found in database")
+		return nil, nil
+	}
+	if err != nil {
+		fmt.Printf("failed to load auth: %v\n", err)
+		return nil, err
+	}
+
+	fmt.Printf("auth loaded successfully: %s (%s)\n", auth.DID, auth.Handle)
+	return auth, nil
+}
+
+// GetAuthByDID loads auth for a specific DID.
+func GetAuthByDID(did string) (*Auth, error) {
+	query := `SELECT did, handle, access_jwt, refresh_jwt, pds_url, session_id,
+			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint,
+			  dpop_auth_nonce, dpop_host_nonce, dpop_private_key, updated_at
+			  FROM auth
+			  WHERE did = ?
+			  LIMIT 1`
+
+	auth, err := getAuthByQuery(query, did)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return auth, nil
+}
+
+func getAuthByQuery(query string, args ...any) (*Auth, error) {
 	var auth Auth
 	var updatedAt string
 
 	var sessionID, authServerURL, authServerTokenEndpoint, authServerRevocationEndpoint, dpopAuthNonce, dpopHostNonce, dpopPrivateKey sql.NullString
 
-	err := db.QueryRow(query).Scan(
+	err := db.QueryRow(query, args...).Scan(
 		&auth.DID,
 		&auth.Handle,
 		&auth.AccessJWT,
@@ -215,6 +253,9 @@ func GetAuth() (*Auth, error) {
 		&dpopPrivateKey,
 		&updatedAt,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	if sessionID.Valid {
 		auth.SessionID = sessionID.String
@@ -238,23 +279,22 @@ func GetAuth() (*Auth, error) {
 		auth.DPoPPrivateKey = dpopPrivateKey.String
 	}
 
-	if err == sql.ErrNoRows {
-		fmt.Println("no auth record found in database")
-		return nil, nil
-	}
-	if err != nil {
-		fmt.Printf("failed to load auth: %v\n", err)
-		return nil, err
-	}
-
 	auth.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
-	fmt.Printf("auth loaded successfully: %s (%s)\n", auth.DID, auth.Handle)
 	return &auth, nil
 }
 
 // SearchPosts searches posts using FTS5
 func SearchPosts(query string, source string) ([]SearchResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "*" {
+		query = ""
+	}
+
 	fmt.Printf("searching posts: query=%s, source=%s\n", query, source)
+
+	if query == "" {
+		return listRecentPosts(source)
+	}
 
 	sqlQuery := `
 		SELECT p.uri, p.cid, p.author_did, p.author_handle, p.text, p.created_at,
@@ -304,6 +344,52 @@ func SearchPosts(query string, source string) ([]SearchResult, error) {
 	}
 
 	fmt.Printf("search completed: %d results\n", len(results))
+	return results, rows.Err()
+}
+
+func listRecentPosts(source string) ([]SearchResult, error) {
+	rows, err := db.Query(`
+		SELECT uri, cid, author_did, author_handle, text, created_at,
+			   like_count, repost_count, reply_count, source, indexed_at
+		FROM posts
+		WHERE (? = '' OR source = ?)
+		ORDER BY created_at DESC
+		LIMIT 25
+	`, source, source)
+	if err != nil {
+		fmt.Printf("failed to list recent posts: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		var createdAt, indexedAt string
+
+		err := rows.Scan(
+			&r.URI,
+			&r.CID,
+			&r.AuthorDID,
+			&r.AuthorHandle,
+			&r.Text,
+			&createdAt,
+			&r.LikeCount,
+			&r.RepostCount,
+			&r.ReplyCount,
+			&r.Source,
+			&indexedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		r.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		r.IndexedAt, _ = time.Parse("2006-01-02 15:04:05", indexedAt)
+		results = append(results, r)
+	}
+
+	fmt.Printf("browse completed: %d results\n", len(results))
 	return results, rows.Err()
 }
 

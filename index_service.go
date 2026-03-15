@@ -153,31 +153,8 @@ func (s *IndexService) createClient() (*BlueskyClient, error) {
 		return nil, fmt.Errorf("invalid DID: %w", err)
 	}
 
-	redirectURI := "http://127.0.0.1/callback"
-	scopes := []string{"atproto", "transition:generic"}
-	config := oauth.NewLocalhostConfig(redirectURI, scopes)
-	store := oauth.NewMemStore()
-
-	sessionData := oauth.ClientSessionData{
-		AccountDID:                   did,
-		SessionID:                    auth.SessionID,
-		HostURL:                      auth.PDSURL,
-		AuthServerURL:                auth.AuthServerURL,
-		AuthServerTokenEndpoint:      auth.AuthServerTokenEndpoint,
-		AuthServerRevocationEndpoint: auth.AuthServerRevocationEndpoint,
-		AccessToken:                  auth.AccessJWT,
-		RefreshToken:                 auth.RefreshJWT,
-		Scopes:                       scopes,
-		DPoPAuthServerNonce:          auth.DPoPAuthNonce,
-		DPoPHostNonce:                auth.DPoPHostNonce,
-		DPoPPrivateKeyMultibase:      auth.DPoPPrivateKey,
-	}
-
-	if err := store.SaveSession(ctx, sessionData); err != nil {
-		return nil, fmt.Errorf("failed to save session: %w", err)
-	}
-
-	app := oauth.NewClientApp(&config, store)
+	store := NewSQLiteOAuthStore()
+	app := newOAuthApp(store)
 
 	session, err := app.ResumeSession(ctx, did, auth.SessionID)
 	if err != nil {
@@ -241,7 +218,7 @@ type BlueskyClient struct {
 }
 
 // fetchBookmarks writes bookmarks to the provided channel in batches
-func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
+func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, _ *IndexService) {
 	ctx := context.Background()
 	apiClient := c.session.APIClient()
 	var cursor string
@@ -291,7 +268,7 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc 
 }
 
 // fetchLikes writes likes to the provided channel in batches
-func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
+func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, _ *IndexService) {
 	ctx := context.Background()
 	apiClient := c.session.APIClient()
 	var cursor string
@@ -395,7 +372,7 @@ type postRecord struct {
 }
 
 // parsePostRecord extracts post data and facets from the LexiconTypeDecoder
-func (c *BlueskyClient) parsePostRecord(decoder interface{}) (*postRecord, string, error) {
+func (c *BlueskyClient) parsePostRecord(decoder any) (*postRecord, string, error) {
 	if decoder == nil {
 		return &postRecord{Text: "", CreatedAt: ""}, "", nil
 	}

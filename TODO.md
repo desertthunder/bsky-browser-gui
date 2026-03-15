@@ -66,5 +66,5 @@
 - [ ] Error handling: toast/notification for network failures, auth expiry
 - [ ] Keyboard shortcuts: `Cmd+K` focus search, `Cmd+R` refresh, `Cmd+L` toggle log viewer
 - [ ] Window title and app icon (`build/appicon.png`)
-- [ ] Production build verification (`wails3 build` → macOS `.app` bundle)
+- [ ] Production build verification (`wails build` → macOS `.app` bundle)
 - [ ] README with build instructions, screenshots, and usage

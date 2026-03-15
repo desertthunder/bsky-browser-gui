@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	rt "runtime"
 	"strings"
-	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
@@ -36,27 +35,28 @@ func NewAuthService() *AuthService {
 // Login initiates OAuth login flow for the given handle
 func (s *AuthService) Login(handle string) error {
 	ctx := context.Background()
+	s.codeChan = make(chan string, 1)
+	s.errChan = make(chan error, 1)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", listenerAddress())
 	if err != nil {
 		return fmt.Errorf("failed to start listener: %w", err)
 	}
 	s.listener = listener
-	s.port = listener.Addr().(*net.TCPAddr).Port
+	s.port = oauthCallbackPort
 
-	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", s.port)
-	scopes := []string{"atproto", "transition:generic"}
-
-	config := oauth.NewLocalhostConfig(redirectURI, scopes)
-	store := oauth.NewMemStore()
-	s.app = oauth.NewClientApp(&config, store)
+	store := NewSQLiteOAuthStore()
+	s.app = newOAuthApp(store)
 
 	redirectURL, err := s.app.StartAuthFlow(ctx, handle)
 	if err != nil {
+		closeCallbackServer(nil, s.listener)
+		s.listener = nil
 		return fmt.Errorf("failed to start auth flow: %w", err)
 	}
 
 	s.startCallbackServer()
+	defer s.stopCallbackServer()
 
 	if err := openBrowser(redirectURL); err != nil {
 		return fmt.Errorf("failed to open browser: %w", err)
@@ -107,6 +107,13 @@ func (s *AuthService) startCallbackServer() {
 	}()
 }
 
+func (s *AuthService) stopCallbackServer() {
+	closeCallbackServer(s.server, s.listener)
+	s.server = nil
+	s.listener = nil
+	s.port = 0
+}
+
 func (s *AuthService) exchangeCode(ctx context.Context, data string) error {
 	parts := strings.SplitN(data, "|", 3)
 	if len(parts) < 2 {
@@ -125,21 +132,17 @@ func (s *AuthService) exchangeCode(ctx context.Context, data string) error {
 		return fmt.Errorf("failed to process callback: %w", err)
 	}
 
-	auth := &Auth{
-		DID:                          sessData.AccountDID.String(),
-		Handle:                       sessData.AccountDID.String(),
-		AccessJWT:                    sessData.AccessToken,
-		RefreshJWT:                   sessData.RefreshToken,
-		PDSURL:                       sessData.HostURL,
-		SessionID:                    sessData.SessionID,
-		AuthServerURL:                sessData.AuthServerURL,
-		AuthServerTokenEndpoint:      sessData.AuthServerTokenEndpoint,
-		AuthServerRevocationEndpoint: sessData.AuthServerRevocationEndpoint,
-		DPoPAuthNonce:                sessData.DPoPAuthServerNonce,
-		DPoPHostNonce:                sessData.DPoPHostNonce,
-		DPoPPrivateKey:               sessData.DPoPPrivateKeyMultibase,
-		UpdatedAt:                    time.Now(),
+	current, err := GetAuthByDID(sessData.AccountDID.String())
+	if err != nil {
+		return fmt.Errorf("failed to load persisted auth: %w", err)
 	}
+
+	handle := ""
+	if current != nil {
+		handle = current.Handle
+	}
+
+	auth := authFromSessionData(sessData, handle)
 
 	if err := UpsertAuth(auth); err != nil {
 		return fmt.Errorf("failed to persist auth: %w", err)
@@ -173,6 +176,9 @@ func (s *AuthService) Whoami(force bool) (*Auth, error) {
 		}
 
 		auth.Handle = ident.Handle.String()
+		if err := UpsertAuth(auth); err != nil {
+			return nil, fmt.Errorf("failed to persist resolved handle: %w", err)
+		}
 
 	}
 
@@ -202,11 +208,8 @@ func (s *AuthService) RefreshSession() error {
 		return nil // Cannot refresh without session ID
 	}
 
-	redirectURI := "http://127.0.0.1/callback"
-	scopes := []string{"atproto", "transition:generic"}
-	config := oauth.NewLocalhostConfig(redirectURI, scopes)
-	store := oauth.NewMemStore()
-	app := oauth.NewClientApp(&config, store)
+	store := NewSQLiteOAuthStore()
+	app := newOAuthApp(store)
 
 	did, err := syntax.ParseDID(auth.DID)
 	if err != nil {
@@ -218,17 +221,12 @@ func (s *AuthService) RefreshSession() error {
 		return fmt.Errorf("failed to resume session: %w", err)
 	}
 
-	newAccessToken, err := session.RefreshTokens(context.Background())
-	if err != nil {
+	if _, err := session.RefreshTokens(context.Background()); err != nil {
 		return fmt.Errorf("failed to refresh tokens: %w", err)
 	}
 
-	if newAccessToken != "" {
-		auth.AccessJWT = newAccessToken
-		auth.UpdatedAt = time.Now()
-		if err := UpsertAuth(auth); err != nil {
-			return fmt.Errorf("failed to update refreshed tokens: %w", err)
-		}
+	if err := UpsertAuth(authFromSessionData(session.Data, auth.Handle)); err != nil {
+		return fmt.Errorf("failed to persist refreshed session: %w", err)
 	}
 
 	return nil

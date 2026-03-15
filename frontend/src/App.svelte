@@ -119,13 +119,9 @@
   }
 
   async function performSearch(query: string, source: string) {
-    if (!query.trim()) {
-      query = "*";
-    }
-
     isSearching = true;
     try {
-      const results = await Search(query, source);
+      const results = await Search(query.trim(), source);
       searchResults = sortResults(results);
     } catch (err) {
       console.error("Search failed:", err);
