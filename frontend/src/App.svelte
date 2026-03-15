@@ -9,6 +9,7 @@
   import { EventsOn } from "../wailsjs/runtime/runtime";
   import SearchBar from "./lib/components/SearchBar.svelte";
   import DataTable from "./lib/components/DataTable.svelte";
+  import LogViewer from "./lib/components/LogViewer.svelte";
   import type { main } from "../wailsjs/go/models";
 
   type AuthInfo = { handle: string; did: string };
@@ -31,6 +32,7 @@
   let sortColumn = $state("created_at");
   let sortDirection = $state<"asc" | "desc">("desc");
   let isSearching = $state(false);
+  let showLogs = $state(false);
 
   onMount(async () => {
     await checkAuthStatus();
@@ -229,6 +231,12 @@
           </div>
 
           <div class="flex items-center gap-3">
+            <button
+              onclick={() => showLogs = !showLogs}
+              class="font-mono text-xs px-3 py-2 rounded bg-surface border border-outline hover:bg-outline text-bright transition-colors {showLogs ? 'bg-[#333]' : ''}">
+              {showLogs ? 'Hide Logs' : 'Show Logs'}
+            </button>
+
             <div class="flex items-center gap-2">
               <label for="refreshLimit" class="font-sans text-xs text-muted">Limit:</label>
               <input
@@ -269,6 +277,9 @@
           <DataTable posts={searchResults} {sortColumn} {sortDirection} onSort={handleSort} />
         {/if}
       </div>
+
+      <!-- Log Viewer -->
+      <LogViewer visible={showLogs} />
 
       <!-- Progress Bar (bottom pinned) -->
       {#if showProgress}

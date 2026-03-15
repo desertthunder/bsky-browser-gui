@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BrowserOpenURL } from "../../../wailsjs/runtime/runtime";
   import type { main } from "../../../wailsjs/go/models";
+  import PostText from "./PostText.svelte";
 
   interface Props {
     posts: main.SearchResult[];
@@ -86,7 +87,9 @@
             </td>
 
             <td class="px-4 py-3 font-mono text-sm text-bright">
-              <div class="line-clamp-2">{truncateText(post.text)}</div>
+              <div class="line-clamp-2">
+                <PostText text={post.text} facetsJson={post.facets} maxLength={120} />
+              </div>
             </td>
 
             <td class="px-4 py-3 font-mono text-xs text-muted">

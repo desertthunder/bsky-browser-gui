@@ -50,14 +50,14 @@
 
 ## Milestone 6 — Facets & Log Viewer
 
-- [ ] Frontend: facet parser — convert UTF-8 byte offsets to JS string indices
-- [ ] Frontend: facet renderer — links (`<a>`), mentions (`@handle`), hashtags (`#tag`)
-- [ ] Integrate rendered facets into post text in data table rows
-- [ ] Implement `LogService` — custom `io.Writer` that emits `log:line` events
-- [ ] Wire `LogService` writer into `log.NewWithOptions` alongside file writer
-- [ ] Frontend: log viewer panel with terminal-style dark background, monospace text
-- [ ] Auto-scroll to bottom with scroll-lock toggle
-- [ ] Level filter buttons: Debug, Info, Warn, Error
+- [x] Frontend: facet parser — convert UTF-8 byte offsets to JS string indices
+- [x] Frontend: facet renderer — links (`<a>`), mentions (`@handle`), hashtags (`#tag`)
+- [x] Integrate rendered facets into post text in data table rows
+- [x] Implement `LogService` — custom `io.Writer` that emits `log:line` events
+- [x] Wire `LogService` writer into `log.NewWithOptions` alongside file writer
+- [x] Frontend: log viewer panel with terminal-style dark background, monospace text
+- [x] Auto-scroll to bottom with scroll-lock toggle
+- [x] Level filter buttons: Debug, Info, Warn, Error
 
 ## Milestone 7 — Polish
 

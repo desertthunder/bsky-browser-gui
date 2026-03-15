@@ -14,6 +14,7 @@ type App struct {
 	authService   *AuthService
 	indexService  *IndexService
 	searchService *SearchService
+	logService    *LogService
 }
 
 // NewApp creates a new App application struct
@@ -22,6 +23,7 @@ func NewApp() *App {
 		authService:   NewAuthService(),
 		indexService:  NewIndexService(),
 		searchService: NewSearchService(),
+		logService:    NewLogService(),
 	}
 }
 
@@ -31,6 +33,16 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
 	a.indexService.SetContext(ctx)
+	a.logService.SetContext(ctx)
+
+	// Initialize log service first
+	if err := a.logService.Initialize(); err != nil {
+		runtime.LogErrorf(a.ctx, "failed to initialize log service: %v", err)
+	} else {
+		// Initialize the global logger with our log service
+		InitLogger(a.logService)
+		LogInfo("Application started")
+	}
 
 	dbPath := getDBPath()
 	if err := Open(dbPath); err != nil {
@@ -47,6 +59,9 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown is called when the app shuts down
 func (a *App) shutdown(ctx context.Context) {
+	if err := a.logService.Close(); err != nil {
+		runtime.LogErrorf(ctx, "failed to close log service: %v", err)
+	}
 	if err := Close(); err != nil {
 		runtime.LogErrorf(ctx, "failed to close database: %v", err)
 	}
