@@ -5,7 +5,8 @@
   --font-sans: "Geist Variable", sans-serif;
   --font-serif: "Lora Variable", serif;
   --color-surface: #0a0a0a;
-  --color-border: #1a1a1a;
+  --color-outline: #1a1a1a;
+  --color-muted: #737373;
 }
 
 html {

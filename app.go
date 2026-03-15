@@ -5,16 +5,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx         context.Context
+	authService *AuthService
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		authService: NewAuthService(),
+	}
 }
 
 // startup is called when the app starts.
@@ -26,13 +31,21 @@ func (a *App) startup(ctx context.Context) {
 	dbPath := getDBPath()
 	if err := Open(dbPath); err != nil {
 		fmt.Printf("failed to open database: %v\n", err)
+		return
+	}
+
+	if a.authService.IsAuthenticated() {
+		if err := a.authService.RefreshSession(); err != nil {
+			fmt.Printf("token refresh failed on startup: %v\n", err)
+		}
 	}
 }
 
 // shutdown is called when the app shuts down
 func (a *App) shutdown(ctx context.Context) {
+	runtime.LogInfo(ctx, "Shutting down")
 	if err := Close(); err != nil {
-		fmt.Printf("failed to close database: %v\n", err)
+		runtime.LogErrorf(ctx, "failed to close database: %v", err)
 	}
 }
 

@@ -20,12 +20,12 @@
 
 ## Milestone 3 — Authentication
 
-- [ ] Implement `AuthService` struct with Wails service binding
-- [ ] `Login(handle)` — loopback OAuth via `oauth.NewLocalhostConfig`, persist tokens to shared DB
-- [ ] `Whoami(force)` — load auth from DB, optionally resolve handle from DID
-- [ ] `IsAuthenticated()` — check for valid auth row
-- [ ] Automatic token refresh on `OnStartup` lifecycle hook
-- [ ] Frontend: login view with handle input, "Login" button, and status display
+- [x] Implement `AuthService` struct with Wails service binding
+- [x] `Login(handle)` — loopback OAuth via `oauth.NewLocalhostConfig`, persist tokens to shared DB
+- [x] `Whoami(force)` — load auth from DB, optionally resolve handle from DID
+- [x] `IsAuthenticated()` — check for valid auth row
+- [x] Automatic token refresh on `OnStartup` lifecycle hook
+- [x] Frontend: login view with handle input, "Login" button, and status display
 
 ## Milestone 4 — Indexing & Progress
 
