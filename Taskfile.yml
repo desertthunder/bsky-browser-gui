@@ -1,0 +1,32 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: Run the application in development mode with hot reload
+    cmds:
+      - wails dev
+
+  build:
+    desc: Build the application for production
+    cmds:
+      - wails build
+
+  build:clean:
+    desc: Clean and build the application for production
+    cmds:
+      - wails build -clean
+
+  generate:
+    desc: Generate Wails bindings
+    cmds:
+      - wails generate module
+
+  init:
+    desc: Initialize the project (install dependencies)
+    cmds:
+      - cd frontend && npm install
+
+  check:
+    desc: Check TypeScript and Svelte
+    cmds:
+      - cd frontend && npm run check

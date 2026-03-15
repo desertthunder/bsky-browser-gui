@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "JetBrains Mono Variable", monospace;
+  --font-sans: "Geist Variable", sans-serif;
+  --font-serif: "Lora Variable", serif;
+  --color-surface: #0a0a0a;
+  --color-border: #1a1a1a;
+}
+
+html {
+  background-color: #000000;
+  color: #e5e5e5;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

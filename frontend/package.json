@@ -16,5 +16,12 @@
     "tslib": "^2.8.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.6"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/lora": "^5.2.8",
+    "@tailwindcss/vite": "^4.2.1",
+    "tailwindcss": "^4.2.1"
   }
 }
