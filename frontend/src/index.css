@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@egoist/tailwindcss-icons";
 
 @theme {
   --font-mono: "JetBrains Mono Variable", monospace;
@@ -7,6 +8,9 @@
   --color-surface: #0a0a0a;
   --color-outline: #1a1a1a;
   --color-muted: #737373;
+  --color-primary: #33b1ff;
+  --color-primary-bright: #0f62fe;
+  --color-secondary: #ee5396;
 }
 
 html {

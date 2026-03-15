@@ -29,13 +29,13 @@
 
 ## Milestone 4 — Indexing & Progress
 
-- [ ] Implement `IndexService` struct with Wails service binding
-- [ ] `Refresh(limit)` — concurrent bookmark + like fetch, batch insert (port `RefreshAndIndex` logic)
-- [ ] Populate `facets` column from `FeedPost.Facets` during `convertPostView`
-- [ ] `IsIndexing()` — thread-safe boolean guard to prevent concurrent refreshes
-- [ ] Emit Wails events: `index:started`, `index:progress`, `index:done`
-- [ ] Frontend: "Refresh" button in header, optional limit input
-- [ ] Frontend: bottom-pinned progress bar component driven by `index:*` events
+- [x] Implement `IndexService` struct with Wails service binding
+- [x] `Refresh(limit)` — concurrent bookmark + like fetch, batch insert (port `RefreshAndIndex` logic)
+- [x] Populate `facets` column from `FeedPost.Facets` during `convertPostView`
+- [x] `IsIndexing()` — thread-safe boolean guard to prevent concurrent refreshes
+- [x] Emit Wails events: `index:started`, `index:progress`, `index:done`
+- [x] Frontend: "Refresh" button in header, optional limit input
+- [x] Frontend: bottom-pinned progress bar component driven by `index:*` events
 
 ## Milestone 5 — Search & Data Table
 

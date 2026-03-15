@@ -5,28 +5,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx         context.Context
-	authService *AuthService
+	ctx          context.Context
+	authService  *AuthService
+	indexService *IndexService
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		authService: NewAuthService(),
+		authService:  NewAuthService(),
+		indexService: NewIndexService(),
 	}
 }
 
-// startup is called when the app starts.
-//
-// The context is saved so we can call the runtime methods
+// startup is called when the app starts. The context is saved so we can call
+// the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	a.indexService.SetContext(ctx)
 
 	dbPath := getDBPath()
 	if err := Open(dbPath); err != nil {
@@ -43,9 +44,8 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown is called when the app shuts down
 func (a *App) shutdown(ctx context.Context) {
-	runtime.LogInfo(ctx, "Shutting down")
 	if err := Close(); err != nil {
-		runtime.LogErrorf(ctx, "failed to close database: %v", err)
+		fmt.Printf("failed to close database: %v\n", err)
 	}
 }
 
