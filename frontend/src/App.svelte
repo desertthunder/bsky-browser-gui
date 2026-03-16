@@ -16,7 +16,6 @@
   import EmptyState from "./lib/components/EmptyState.svelte";
   import ProgressBar from "./lib/components/ProgressBar.svelte";
   import PostDetailPanel from "./lib/components/PostDetailPanel.svelte";
-  import { parseDateValue } from "./lib/date";
   import type { main } from "../wailsjs/go/models";
   import type { IndexStats } from "./lib/types";
 
@@ -40,6 +39,9 @@
   let isSearching = $state(false);
   let showLogs = $state(false);
   let selectedPost = $state<main.SearchResult | null>(null);
+
+  // TODO: page size should be configurable with $state
+  const pageSize = 25;
 
   onMount(() => {
     document.addEventListener("keydown", handleGlobalKeydown);
@@ -163,8 +165,8 @@
   async function performSearch(query: string, source: string) {
     isSearching = true;
     try {
-      const results = await Search(query.trim(), source);
-      searchResults = sortResults(results);
+      const results = await Search(query.trim(), source, pageSize, sortColumn, sortDirection);
+      searchResults = results;
       if (selectedPost && !results.some((post) => post.uri === selectedPost?.uri)) {
         selectedPost = null;
       }
@@ -177,31 +179,6 @@
     }
   }
 
-  function sortResults(results: main.SearchResult[]): main.SearchResult[] {
-    return [...results].sort((a, b) => {
-      let aVal: any = a[sortColumn as keyof main.SearchResult];
-      let bVal: any = b[sortColumn as keyof main.SearchResult];
-
-      if (sortColumn === "created_at" || sortColumn === "indexed_at") {
-        aVal = parseDateValue(aVal)?.getTime() ?? 0;
-        bVal = parseDateValue(bVal)?.getTime() ?? 0;
-      }
-
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
-      }
-
-      const aStr = String(aVal || "").toLowerCase();
-      const bStr = String(bVal || "").toLowerCase();
-
-      if (sortDirection === "asc") {
-        return aStr < bStr ? -1 : aStr > bStr ? 1 : 0;
-      } else {
-        return aStr > bStr ? -1 : aStr < bStr ? 1 : 0;
-      }
-    });
-  }
-
   function handleSort(column: string) {
     if (sortColumn === column) {
       sortDirection = sortDirection === "asc" ? "desc" : "asc";
@@ -209,7 +186,7 @@
       sortColumn = column;
       sortDirection = "desc";
     }
-    searchResults = sortResults(searchResults);
+    performSearch(searchQuery, searchSource);
   }
 
   function handleKeydown(event: KeyboardEvent) {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -52,13 +53,21 @@ func Open(dbPath string) error {
 }
 
 func runMigrations() error {
-	content, err := migrationsFS.ReadFile("migrations/000_initial_schema.sql")
-	if err != nil {
-		return wrapDBError("failed to read migration", err)
+	migrations := []string{
+		"migrations/000_initial_schema.sql",
+		"migrations/001_add_indexes.sql",
 	}
 
-	if _, err := db.Exec(string(content)); err != nil {
-		return wrapDBError("failed to execute migration", err)
+	for _, migration := range migrations {
+		content, err := migrationsFS.ReadFile(migration)
+		if err != nil {
+			return wrapDBError("failed to read migration "+migration, err)
+		}
+
+		if _, err := db.Exec(string(content)); err != nil {
+			return wrapDBError("failed to execute migration "+migration, err)
+		}
+		LogInfof("migration applied successfully: %s", migration)
 	}
 
 	if err := ensureSchemaCompatibility(); err != nil {
@@ -66,6 +75,29 @@ func runMigrations() error {
 	}
 
 	return nil
+}
+
+// validSchemaIdentifiers is the allow-list of valid table and column names
+var validSchemaIdentifiers = map[string]map[string]bool{
+	"posts": {
+		"facets": true,
+	},
+	"auth": {
+		"session_id":                      true,
+		"auth_server_url":                 true,
+		"auth_server_token_endpoint":      true,
+		"auth_server_revocation_endpoint": true,
+		"dpop_auth_nonce":                 true,
+		"dpop_host_nonce":                 true,
+		"dpop_private_key":                true,
+	},
+}
+
+// validIndexIdentifiers is the allow-list of valid index names
+var validIndexIdentifiers = map[string]bool{
+	"idx_posts_author_did": true,
+	"idx_posts_created_at": true,
+	"idx_posts_source":     true,
 }
 
 func ensureSchemaCompatibility() error {
@@ -88,6 +120,10 @@ func ensureSchemaCompatibility() error {
 	}
 
 	for table, columns := range columnsByTable {
+		// Validate table name against allow-list
+		if _, ok := validSchemaIdentifiers[table]; !ok {
+			return fmt.Errorf("invalid table name in schema migration: %s", table)
+		}
 		exists, err := tableExists(table)
 		if err != nil {
 			return err
@@ -97,6 +133,11 @@ func ensureSchemaCompatibility() error {
 		}
 
 		for _, column := range columns {
+			// Validate column name against allow-list
+			if !validSchemaIdentifiers[table][column.name] {
+				return fmt.Errorf("invalid column name in schema migration: %s.%s", table, column.name)
+			}
+
 			hasColumn, err := columnExists(table, column.name)
 			if err != nil {
 				return err
@@ -112,7 +153,43 @@ func ensureSchemaCompatibility() error {
 		}
 	}
 
+	// Create performance indexes if they don't exist
+	indexes := []struct {
+		name    string
+		table   string
+		columns string
+	}{
+		{"idx_posts_author_did", "posts", "author_did"},
+		{"idx_posts_created_at", "posts", "created_at"},
+		{"idx_posts_source", "posts", "source"},
+	}
+
+	for _, idx := range indexes {
+		// Validate index name against allow-list
+		if !validIndexIdentifiers[idx.name] {
+			return fmt.Errorf("invalid index name in schema migration: %s", idx.name)
+		}
+		exists, err := indexExists(idx.name)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			query := fmt.Sprintf("CREATE INDEX %s ON %s(%s)", idx.name, idx.table, idx.columns)
+			if _, err := db.Exec(query); err != nil {
+				return wrapDBError("failed to create index "+idx.name, err)
+			}
+		}
+	}
+
 	return nil
+}
+
+func indexExists(name string) (bool, error) {
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?", name).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func tableExists(table string) (bool, error) {
@@ -173,17 +250,6 @@ func PostExists(uri string) (bool, error) {
 func InsertPost(post *Post) error {
 	LogInfof("inserting post: %s by %s", post.URI, post.AuthorHandle)
 
-	exists, err := PostExists(post.URI)
-	if err != nil {
-		LogErrorf("failed to check if post exists: %s, error: %v", post.URI, err)
-		return err
-	}
-
-	if exists {
-		LogDebugf("skipping already indexed post: %s", post.URI)
-		return nil
-	}
-
 	query := `
 		INSERT INTO posts (uri, cid, author_did, author_handle, text, created_at, like_count, repost_count, reply_count, source, facets)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -201,7 +267,7 @@ func InsertPost(post *Post) error {
 			indexed_at = CURRENT_TIMESTAMP
 	`
 
-	_, err = db.Exec(query,
+	_, err := db.Exec(query,
 		post.URI,
 		post.CID,
 		post.AuthorDID,
@@ -218,6 +284,42 @@ func InsertPost(post *Post) error {
 	if err != nil {
 		LogErrorf("failed to insert post: %s, error: %v", post.URI, err)
 	}
+
+	return err
+}
+
+// insertPostTx inserts a post using an existing transaction
+func insertPostTx(tx *sql.Tx, post *Post) error {
+	query := `
+		INSERT INTO posts (uri, cid, author_did, author_handle, text, created_at, like_count, repost_count, reply_count, source, facets)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(uri) DO UPDATE SET
+			cid = excluded.cid,
+			author_did = excluded.author_did,
+			author_handle = excluded.author_handle,
+			text = excluded.text,
+			created_at = excluded.created_at,
+			like_count = excluded.like_count,
+			repost_count = excluded.repost_count,
+			reply_count = excluded.reply_count,
+			source = excluded.source,
+			facets = excluded.facets,
+			indexed_at = CURRENT_TIMESTAMP
+	`
+
+	_, err := tx.Exec(query,
+		post.URI,
+		post.CID,
+		post.AuthorDID,
+		post.AuthorHandle,
+		post.Text,
+		post.CreatedAt,
+		post.LikeCount,
+		post.RepostCount,
+		post.ReplyCount,
+		post.Source,
+		post.Facets,
+	)
 
 	return err
 }
@@ -370,17 +472,46 @@ func getAuthByQuery(query string, args ...any) (*Auth, error) {
 	return &auth, nil
 }
 
+// validSortColumns defines which columns can be used for sorting
+var validSortColumns = map[string]bool{
+	"created_at":    true,
+	"indexed_at":    true,
+	"like_count":    true,
+	"repost_count":  true,
+	"reply_count":   true,
+	"author_handle": true,
+	"text":          true,
+}
+
 // SearchPosts searches posts using FTS5
-func SearchPosts(query string, source string) ([]SearchResult, error) {
+func SearchPosts(query string, source string, limit int, sortColumn string, sortDirection string) ([]SearchResult, error) {
+	const defaultLimit = 25
+	const maxLimit = 100
+
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	// Validate and default sort parameters
+	if sortColumn == "" || !validSortColumns[sortColumn] {
+		sortColumn = "created_at"
+	}
+	if sortDirection != "asc" && sortDirection != "desc" {
+		sortDirection = "desc"
+	}
+
 	query = strings.TrimSpace(query)
 	if query == "*" {
 		query = ""
 	}
 
-	LogInfof("searching posts: query=%s, source=%s", query, source)
+	LogInfof("searching posts: query=%s, source=%s, limit=%d, sort=%s %s", query, source, limit, sortColumn, sortDirection)
 
 	if query == "" {
-		return listRecentPosts(source)
+		return listRecentPosts(source, limit, sortColumn, sortDirection)
 	}
 
 	sqlQuery := `
@@ -391,11 +522,11 @@ func SearchPosts(query string, source string) ([]SearchResult, error) {
 		JOIN posts p ON posts_fts.rowid = p.rowid
 		WHERE posts_fts MATCH ?
 		  AND (? = '' OR p.source = ?)
-		ORDER BY rank
-		LIMIT 25
+		ORDER BY p.` + sortColumn + ` ` + sortDirection + `
+		LIMIT ?
 	`
 
-	rows, err := db.Query(sqlQuery, query, source, source)
+	rows, err := db.Query(sqlQuery, query, source, source, limit)
 	if err != nil {
 		LogErrorf("failed to execute search query: %v", err)
 		return nil, err
@@ -434,15 +565,18 @@ func SearchPosts(query string, source string) ([]SearchResult, error) {
 	return results, rows.Err()
 }
 
-func listRecentPosts(source string) ([]SearchResult, error) {
-	rows, err := db.Query(`
+func listRecentPosts(source string, limit int, sortColumn string, sortDirection string) ([]SearchResult, error) {
+	// Build query with proper ORDER BY - note: sortColumn and sortDirection are validated by caller
+	query := fmt.Sprintf(`
 		SELECT uri, cid, author_did, author_handle, text, created_at,
 			   like_count, repost_count, reply_count, source, indexed_at
 		FROM posts
 		WHERE (? = '' OR source = ?)
-		ORDER BY created_at DESC
-		LIMIT 25
-	`, source, source)
+		ORDER BY %s %s
+		LIMIT ?
+	`, sortColumn, sortDirection)
+
+	rows, err := db.Query(query, source, source, limit)
 	if err != nil {
 		LogErrorf("failed to list recent posts: %v", err)
 		return nil, err
@@ -480,12 +614,11 @@ func listRecentPosts(source string) ([]SearchResult, error) {
 	return results, rows.Err()
 }
 
-func parseStoredTime(value string) time.Time {
-	if value == "" {
-		return time.Time{}
-	}
-
-	layouts := []string{
+// parseStoredTimeCache caches the last successful time layout for faster parsing
+var (
+	parseStoredTimeCache    string
+	parseStoredTimeCacheMux sync.RWMutex
+	parseStoredTimeLayouts  = []string{
 		time.RFC3339Nano,
 		time.RFC3339,
 		"2006-01-02 15:04:05.999999999-07:00",
@@ -494,10 +627,31 @@ func parseStoredTime(value string) time.Time {
 		"2006-01-02 15:04:05 -0700 MST",
 		"2006-01-02 15:04:05",
 	}
+)
 
-	for _, layout := range layouts {
-		parsed, err := time.Parse(layout, value)
-		if err == nil {
+func parseStoredTime(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+
+	// Try cached layout first
+	parseStoredTimeCacheMux.RLock()
+	cachedLayout := parseStoredTimeCache
+	parseStoredTimeCacheMux.RUnlock()
+
+	if cachedLayout != "" {
+		if parsed, err := time.Parse(cachedLayout, value); err == nil {
+			return parsed
+		}
+	}
+
+	// Fall back to trying all layouts
+	for _, layout := range parseStoredTimeLayouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			// Cache the successful layout
+			parseStoredTimeCacheMux.Lock()
+			parseStoredTimeCache = layout
+			parseStoredTimeCacheMux.Unlock()
 			return parsed
 		}
 	}

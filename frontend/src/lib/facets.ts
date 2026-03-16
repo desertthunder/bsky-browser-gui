@@ -58,7 +58,7 @@ export function renderFacets(text: string, facets: Facet[]): RenderedFacet[] {
     return [{ type: "text", text }];
   }
 
-  const sortedFacets = [...facets].sort((a, b) => a.index.byteStart - b.index.byteStart);
+  const sortedFacets = facets.toSorted((a, b) => a.index.byteStart - b.index.byteStart);
 
   const result: RenderedFacet[] = [];
   let lastByteEnd = 0;

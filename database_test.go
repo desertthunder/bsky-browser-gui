@@ -57,7 +57,7 @@ func TestSearchPostsBrowseMode(t *testing.T) {
 		}
 	}
 
-	results, err := SearchPosts("", "")
+	results, err := SearchPosts("", "", 25, "created_at", "desc")
 	if err != nil {
 		t.Fatalf("SearchPosts(empty) error = %v", err)
 	}
@@ -71,7 +71,7 @@ func TestSearchPostsBrowseMode(t *testing.T) {
 		t.Fatal("SearchPosts(empty) CreatedAt is zero, want parsed timestamp")
 	}
 
-	starResults, err := SearchPosts("*", "saved")
+	starResults, err := SearchPosts("*", "saved", 25, "created_at", "desc")
 	if err != nil {
 		t.Fatalf("SearchPosts(*) error = %v", err)
 	}

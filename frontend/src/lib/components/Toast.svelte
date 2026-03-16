@@ -29,22 +29,22 @@
   {/if}
 {/snippet}
 
-<div class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+<div class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2">
   {#each toaster.toasts as toast (toast.id)}
     <div
       in:fly={{ x: 100, duration: 300 }}
       out:fade={{ duration: 200 }}
       animate:flip={{ duration: 200 }}
-      class="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg border backdrop-blur-sm min-w-[300px] max-w-[400px] {getTypeStyle(
+      class="pointer-events-auto flex max-w-[400px] min-w-[300px] items-center gap-3 rounded-lg border px-4 py-3 backdrop-blur-sm {getTypeStyle(
         toast.kind,
       )}">
-      <span class="font-sans text-lg flex items-center">
+      <span class="flex items-center font-sans text-lg">
         {@render typeIcon(toast.kind)}
       </span>
-      <p class="font-sans text-sm flex-1">{toast.message}</p>
+      <p class="flex-1 font-sans text-sm">{toast.message}</p>
       <button
         onclick={() => toaster.remove(toast.id)}
-        class="font-mono text-lg opacity-50 hover:opacity-100 transition-opacity flex items-center">
+        class="flex items-center font-mono text-lg opacity-50 transition-opacity hover:opacity-100">
         <span class="sr-only">Dismiss {toast.kind} toast ({toast.id})</span>
         <i class="i-ri-close-line"></i>
       </button>

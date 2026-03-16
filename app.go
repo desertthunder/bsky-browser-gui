@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -36,7 +37,6 @@ func (a *App) startup(ctx context.Context) {
 	a.indexService.setContext(ctx)
 	a.logService.setContext(ctx)
 
-	// Initialize log service first
 	if err := a.logService.Initialize(); err != nil {
 		runtime.LogErrorf(a.ctx, "failed to initialize log service: %v", err)
 	} else {
@@ -48,7 +48,12 @@ func (a *App) startup(ctx context.Context) {
 	if err := Open(dbPath); err != nil {
 		LogErrorf("failed to open database: %v", err)
 		runtime.LogErrorf(a.ctx, "failed to open database: %v", err)
-		return
+		runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+			Type:    runtime.ErrorDialog,
+			Title:   "Fatal Error",
+			Message: fmt.Sprintf("Failed to open database: %v\n\nThe application will now exit.", err),
+		})
+		os.Exit(1)
 	}
 
 	if a.authService.IsAuthenticated() {

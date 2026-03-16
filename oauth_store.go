@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -11,20 +12,18 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 )
 
-const oauthCallbackPort = 8787
-
 var oauthScopes = []string{"atproto", "transition:generic"}
 
-func oauthCallbackURL() string {
-	return fmt.Sprintf("http://127.0.0.1:%d/callback", oauthCallbackPort)
+func oauthCallbackURL(port int) string {
+	return fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 }
 
-func oauthConfig() oauth.ClientConfig {
-	return oauth.NewLocalhostConfig(oauthCallbackURL(), append([]string(nil), oauthScopes...))
+func oauthConfig(port int) oauth.ClientConfig {
+	return oauth.NewLocalhostConfig(oauthCallbackURL(port), append([]string(nil), oauthScopes...))
 }
 
-func newOAuthApp(store oauth.ClientAuthStore) *oauth.ClientApp {
-	config := oauthConfig()
+func newOAuthApp(store oauth.ClientAuthStore, port int) *oauth.ClientApp {
+	config := oauthConfig(port)
 	return oauth.NewClientApp(&config, store)
 }
 
@@ -145,8 +144,14 @@ func (s *SQLiteOAuthStore) DeleteAuthRequestInfo(ctx context.Context, state stri
 	return nil
 }
 
-func listenerAddress() string {
-	return fmt.Sprintf("127.0.0.1:%d", oauthCallbackPort)
+func listenerAddress() (string, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", fmt.Errorf("failed to find available port: %w", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+	return addr, nil
 }
 
 func closeCallbackServer(server *http.Server, listener httpCloser) {

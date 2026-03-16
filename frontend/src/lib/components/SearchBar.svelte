@@ -25,27 +25,27 @@
 </script>
 
 <form onsubmit={handleSubmit} class="flex items-center gap-3">
-  <div class="flex-1 relative">
+  <div class="relative flex-1">
     <input
       id="search-posts"
       type="search"
       placeholder="Search posts..."
       bind:value={query}
       enterkeyhint="search"
-      class="w-full bg-black border border-outline rounded-lg px-4 py-2.5 font-mono text-sm text-muted placeholder-[#333] focus:outline-none focus:border-[#333]" />
-    <div class="absolute right-3 top-1/2 -translate-y-1/2">
-      <kbd class="font-mono text-xs text-muted bg-surface px-2 py-0.5 rounded border border-outline">⌘K</kbd>
+      class="border-outline text-muted w-full rounded-lg border bg-black px-4 py-2.5 font-mono text-sm placeholder-[#333] focus:border-[#333] focus:outline-none" />
+    <div class="absolute top-1/2 right-3 -translate-y-1/2">
+      <kbd class="text-muted bg-surface border-outline rounded border px-2 py-0.5 font-mono text-xs">⌘K</kbd>
     </div>
   </div>
 
-  <div class="flex bg-surface rounded-lg border border-outline p-0.5">
+  <div class="bg-surface border-outline flex rounded-lg border p-0.5">
     {#each sources as s}
       <button
         type="button"
         onclick={() => {
           handleClick(s.value);
         }}
-        class="px-3 py-1.5 font-sans text-xs rounded transition-colors {source === s.value
+        class="rounded px-3 py-1.5 font-sans text-xs transition-colors {source === s.value
           ? 'bg-outline text-bright'
           : 'text-muted hover:text-bright'}
         ">
@@ -56,7 +56,7 @@
 
   <button
     type="submit"
-    class="bg-surface border border-outline hover:bg-outline text-bright font-sans text-sm px-4 py-2 rounded-lg transition-colors">
+    class="bg-surface border-outline hover:bg-outline text-bright rounded-lg border px-4 py-2 font-sans text-sm transition-colors">
     Search
   </button>
 </form>

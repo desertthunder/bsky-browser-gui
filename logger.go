@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 )
 
 // AppLogger provides application logging that writes to both file and Wails events
@@ -12,27 +13,36 @@ type AppLogger struct {
 	service   *LogService
 }
 
-var appLogger *AppLogger
+var (
+	appLogger      *AppLogger
+	loggerOnce     sync.Once
+	fallbackLogger *AppLogger
+)
 
 // InitLogger initializes the application logger with the log service
 func InitLogger(service *LogService) {
-	multiWriter := service.GetMultiWriter()
-	appLogger = &AppLogger{
-		stdLogger: log.New(multiWriter, "", log.LstdFlags|log.Lshortfile),
-		service:   service,
-	}
-
-	log.SetOutput(multiWriter)
+	loggerOnce.Do(func() {
+		multiWriter := service.GetMultiWriter()
+		appLogger = &AppLogger{
+			stdLogger: log.New(multiWriter, "", log.LstdFlags|log.Lshortfile),
+			service:   service,
+		}
+		log.SetOutput(multiWriter)
+	})
 }
 
 // GetLogger returns the global app logger
 func GetLogger() *AppLogger {
-	if appLogger == nil {
-		return &AppLogger{
+	if appLogger != nil {
+		return appLogger
+	}
+
+	loggerOnce.Do(func() {
+		fallbackLogger = &AppLogger{
 			stdLogger: log.New(os.Stdout, "", log.LstdFlags),
 		}
-	}
-	return appLogger
+	})
+	return fallbackLogger
 }
 
 // Debug logs a debug message

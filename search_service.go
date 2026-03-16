@@ -8,9 +8,9 @@ func NewSearchService() *SearchService {
 	return &SearchService{}
 }
 
-// Search performs an FTS5 search with BM25 ranking and optional source filter
-func (s *SearchService) Search(query string, source string) ([]SearchResult, error) {
-	return SearchPosts(query, source)
+// Search performs an FTS5 search with BM25 ranking, optional source filter, and server-side sorting
+func (s *SearchService) Search(query string, source string, limit int, sortColumn string, sortDirection string) ([]SearchResult, error) {
+	return SearchPosts(query, source, limit, sortColumn, sortDirection)
 }
 
 // CountPosts returns the total number of indexed posts

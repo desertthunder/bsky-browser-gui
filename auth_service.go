@@ -8,10 +8,12 @@ import (
 	"os/exec"
 	rt "runtime"
 	"strings"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // AuthService provides authentication functionality via Wails bindings
@@ -39,24 +41,33 @@ func (s *AuthService) setContext(ctx context.Context) {
 
 // Login initiates OAuth login flow for the given handle
 func (s *AuthService) Login(handle string) error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
 	s.codeChan = make(chan string, 1)
 	s.errChan = make(chan error, 1)
 
-	listener, err := net.Listen("tcp", listenerAddress())
+	// Find an available port first
+	listenerAddr, err := listenerAddress()
+	if err != nil {
+		return fmt.Errorf("failed to find available port for OAuth callback: %w", err)
+	}
+
+	listener, err := net.Listen("tcp", listenerAddr)
 	if err != nil {
 		return fmt.Errorf("failed to start listener: %w", err)
 	}
 	s.listener = listener
-	s.port = oauthCallbackPort
+	s.port = listener.Addr().(*net.TCPAddr).Port
 
 	store := NewSQLiteOAuthStore()
-	s.app = newOAuthApp(store)
+	s.app = newOAuthApp(store, s.port)
 
 	redirectURL, err := s.app.StartAuthFlow(ctx, handle)
 	if err != nil {
 		closeCallbackServer(nil, s.listener)
 		s.listener = nil
+		s.port = 0
 		return fmt.Errorf("failed to start auth flow: %w", err)
 	}
 
@@ -173,7 +184,9 @@ func (s *AuthService) Whoami(force bool) (*Auth, error) {
 		}
 
 		dir := &identity.BaseDirectory{}
-		ident, err := dir.LookupDID(context.Background(), did)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ident, err := dir.LookupDID(ctx, did)
+		cancel()
 		if err != nil {
 			LogWarnf("failed to resolve handle for %s: %v", auth.DID, err)
 			return auth, nil
@@ -209,23 +222,27 @@ func (s *AuthService) RefreshSession() error {
 	}
 
 	if auth.SessionID == "" {
-		return nil // Cannot refresh without session ID
+		return nil
 	}
 
 	store := NewSQLiteOAuthStore()
-	app := newOAuthApp(store)
+	app := newOAuthApp(store, 0)
 
 	did, err := syntax.ParseDID(auth.DID)
 	if err != nil {
 		return fmt.Errorf("invalid DID in database: %w", err)
 	}
 
-	session, err := app.ResumeSession(context.Background(), did, auth.SessionID)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	session, err := app.ResumeSession(ctx, did, auth.SessionID)
 	if err != nil {
 		return fmt.Errorf("failed to resume session: %w", err)
 	}
 
-	if _, err := session.RefreshTokens(context.Background()); err != nil {
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel2()
+	if _, err := session.RefreshTokens(ctx2); err != nil {
 		return fmt.Errorf("failed to refresh tokens: %w", err)
 	}
 
@@ -248,15 +265,19 @@ func (s *AuthService) Logout() error {
 
 	if auth.SessionID != "" {
 		store := NewSQLiteOAuthStore()
-		app := newOAuthApp(store)
+		app := newOAuthApp(store, 0)
 
 		did, err := syntax.ParseDID(auth.DID)
 		if err == nil {
-			session, resumeErr := app.ResumeSession(context.Background(), did, auth.SessionID)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			session, resumeErr := app.ResumeSession(ctx, did, auth.SessionID)
+			cancel()
 			if resumeErr == nil {
-				if revokeErr := session.RevokeSession(context.Background()); revokeErr != nil {
+				ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+				if revokeErr := session.RevokeSession(ctx2); revokeErr != nil {
 					LogWarnf("failed to revoke remote session for %s: %v", auth.DID, revokeErr)
 				}
+				cancel2()
 			} else {
 				LogWarnf("failed to resume session for logout (%s): %v", auth.DID, resumeErr)
 			}
@@ -267,6 +288,13 @@ func (s *AuthService) Logout() error {
 
 	if err := ClearAuth(); err != nil {
 		return fmt.Errorf("failed to clear auth: %w", err)
+	}
+
+	if s.ctx != nil {
+		runtime.EventsEmit(s.ctx, "auth:logout", map[string]any{
+			"did":    auth.DID,
+			"handle": auth.Handle,
+		})
 	}
 
 	return nil

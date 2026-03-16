@@ -135,7 +135,8 @@ func (s *IndexService) updateProgress(fetched, inserted, errors int) {
 
 // createClient creates an authenticated Bluesky client
 func (s *IndexService) createClient() (*BlueskyClient, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
 
 	auth, err := GetAuth()
 	if err != nil {
@@ -155,7 +156,7 @@ func (s *IndexService) createClient() (*BlueskyClient, error) {
 	}
 
 	store := NewSQLiteOAuthStore()
-	app := newOAuthApp(store)
+	app := newOAuthApp(store, 0)
 
 	session, err := app.ResumeSession(ctx, did, auth.SessionID)
 	if err != nil {
@@ -179,14 +180,37 @@ func (s *IndexService) batchWriter(ch <-chan *PostResult, batchSize int) (int, i
 			return
 		}
 
+		// Wrap batch in transaction for better performance
+		tx, err := db.Begin()
+		if err != nil {
+			LogErrorf("failed to begin transaction: %v", err)
+			// Fall back to individual inserts
+			for _, post := range batch {
+				if err := InsertPost(post); err != nil {
+					errorCount++
+					s.updateProgress(0, 0, 1)
+				} else {
+					successCount++
+					s.updateProgress(0, 1, 0)
+				}
+			}
+			batch = batch[:0]
+			return
+		}
+
 		for _, post := range batch {
-			if err := InsertPost(post); err != nil {
+			if err := insertPostTx(tx, post); err != nil {
 				errorCount++
 				s.updateProgress(0, 0, 1)
 			} else {
 				successCount++
 				s.updateProgress(0, 1, 0)
 			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			LogErrorf("failed to commit transaction: %v", err)
+			_ = tx.Rollback()
 		}
 		batch = batch[:0]
 	}
@@ -219,7 +243,6 @@ type BlueskyClient struct {
 
 // fetchBookmarks writes bookmarks to the provided channel in batches
 func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
-	ctx := context.Background()
 	apiClient := c.session.APIClient()
 	var cursor string
 	seenCursors := make(map[string]struct{})
@@ -228,7 +251,9 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc 
 
 	for {
 		LogInfof("fetching bookmarks page: cursor=%q", cursor)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		resp, err := bsky.BookmarkGetBookmarks(ctx, apiClient, cursor, batchSize)
+		cancel()
 		if err != nil {
 			ch <- &PostResult{Error: fmt.Errorf("failed to fetch bookmarks: %w", err)}
 			return
@@ -250,6 +275,7 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc 
 
 				exists, err := PostExists(pv.Uri)
 				if err != nil {
+					LogWarnf("failed to check if post exists: %s, error: %v", pv.Uri, err)
 					continue
 				}
 				if exists {
@@ -289,7 +315,6 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc 
 
 // fetchLikes writes likes to the provided channel in batches
 func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
-	ctx := context.Background()
 	apiClient := c.session.APIClient()
 	var cursor string
 	seenCursors := make(map[string]struct{})
@@ -298,7 +323,9 @@ func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *Ind
 
 	for {
 		LogInfof("fetching likes page: cursor=%q", cursor)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		resp, err := bsky.FeedGetActorLikes(ctx, apiClient, c.auth.DID, cursor, batchSize)
+		cancel()
 		if err != nil {
 			ch <- &PostResult{Error: fmt.Errorf("failed to fetch likes: %w", err)}
 			return
@@ -316,6 +343,7 @@ func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *Ind
 
 				exists, err := PostExists(pv.Uri)
 				if err != nil {
+					LogWarnf("failed to check if post exists: %s, error: %v", pv.Uri, err)
 					continue
 				}
 				if exists {
@@ -462,6 +490,7 @@ func (c *BlueskyClient) extractFacets(feedPost *bsky.FeedPost) string {
 
 	facetsJSON, err := json.Marshal(feedPost.Facets)
 	if err != nil {
+		LogWarnf("failed to marshal facets: %v", err)
 		return ""
 	}
 
