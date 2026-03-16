@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { parseFacets, renderFacets, truncateRenderedFacets } from "../facets";
+  import { parseFacets, renderFacets, truncateRenderedFacets, type RenderedFacet } from "../facets";
 
   type Props = { text: string; facetsJson?: string; maxLength?: number; class?: string };
 
@@ -16,6 +16,19 @@
 
     return rendered;
   });
+
+  function getFacetLabel(facet: RenderedFacet) {
+    switch (facet.type) {
+      case "link":
+        return `Open link ${facet.href ?? facet.text}`;
+      case "mention":
+        return `Open profile ${facet.text}`;
+      case "tag":
+        return `Search tag ${facet.tag ?? facet.text}`;
+      default:
+        return facet.text;
+    }
+  }
 </script>
 
 <span class={className}>
@@ -25,6 +38,8 @@
         href={facet.href}
         target="_blank"
         rel="noopener noreferrer"
+        title={getFacetLabel(facet)}
+        aria-label={getFacetLabel(facet)}
         class="text-primary hover:text-primary-bright hover:underline"
         onclick={(e) => e.stopPropagation()}>
         {facet.text}
@@ -34,6 +49,8 @@
         href={facet.href}
         target="_blank"
         rel="noopener noreferrer"
+        title={getFacetLabel(facet)}
+        aria-label={getFacetLabel(facet)}
         class="text-primary hover:text-primary-bright hover:underline"
         onclick={(e) => e.stopPropagation()}>
         {facet.text}
@@ -43,6 +60,8 @@
         href={facet.href}
         target="_blank"
         rel="noopener noreferrer"
+        title={getFacetLabel(facet)}
+        aria-label={getFacetLabel(facet)}
         class="text-secondary hover:text-secondary-bright hover:underline"
         onclick={(e) => e.stopPropagation()}>
         {facet.text}

@@ -1,20 +1,24 @@
-version: '3'
+version: "3"
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
 
 tasks:
   dev:
     desc: Run the application in development mode with hot reload
     cmds:
-      - wails dev
+      - wails dev -ldflags "-X main.version={{.VERSION}}"
 
   build:
     desc: Build the application for production
     cmds:
-      - wails build
+      - wails build -ldflags "-X main.version={{.VERSION}}"
 
   build:clean:
     desc: Clean and build the application for production
     cmds:
-      - wails build -clean
+      - wails build -clean -ldflags "-X main.version={{.VERSION}}"
 
   generate:
     desc: Generate Wails bindings
@@ -30,3 +34,14 @@ tasks:
     desc: Check TypeScript and Svelte
     cmds:
       - cd frontend && pnpm check
+
+  lint:
+    desc: Run Go and frontend linters
+    cmds:
+      - golangci-lint run
+      - cd frontend && pnpm exec svelte-check --tsconfig ./tsconfig.json
+
+  test:
+    desc: Run the Go test suite
+    cmds:
+      - go test ./...

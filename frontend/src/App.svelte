@@ -4,6 +4,7 @@
   import "@fontsource-variable/lora";
   import { onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
+  import { GetVersion } from "../wailsjs/go/main/App";
   import { Login, Logout, Whoami, IsAuthenticated } from "../wailsjs/go/main/AuthService";
   import { Refresh, IsIndexing } from "../wailsjs/go/main/IndexService";
   import { Search, CountPosts } from "../wailsjs/go/main/SearchService";
@@ -20,6 +21,7 @@
   import type { IndexStats } from "./lib/types";
 
   type AuthInfo = { handle: string; did: string };
+  const SEARCH_DEBOUNCE_MS = 200;
 
   let handle = $state("");
   let isLoading = $state(false);
@@ -40,11 +42,18 @@
   let showLogs = $state(false);
   let selectedPost = $state<main.SearchResult | null>(null);
   let pageSize = $state(25);
+  let appVersion = $state("dev");
+  let showAbout = $state(false);
+
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let activeSearchToken = 0;
+  let hasSearchFilters = $derived(searchQuery.trim().length > 0 || searchSource !== "");
 
   onMount(() => {
     document.addEventListener("keydown", handleGlobalKeydown);
+    void loadVersion();
 
-    checkAuthStatus().then(() => {
+    void checkAuthStatus().then(() => {
       EventsOn("index:started", () => {
         isIndexing = true;
         showProgress = true;
@@ -58,27 +67,43 @@
       EventsOn("index:done", (result: any) => {
         isIndexing = false;
         indexStats.total = result.total || 0;
-        loadPosts();
-        toaster.success(`Indexed ${result.total} posts successfully`);
+        void loadPosts();
+
+        if (result.errors > 0) {
+          const inserted = Math.max((result.total || 0) - result.errors, 0);
+          toaster.warning(`Indexed ${inserted} posts with ${result.errors} errors`);
+        } else {
+          toaster.success(`Indexed ${result.total} posts successfully`);
+        }
+
         setTimeout(() => {
           showProgress = false;
         }, 3000);
       });
 
-      IsIndexing().then((indexing) => {
+      void IsIndexing().then((indexing) => {
         isIndexing = indexing;
         if (isIndexing) {
           showProgress = true;
         }
       });
 
-      loadPosts();
+      void loadPosts();
     });
 
     return () => {
+      clearSearchDebounce();
       document.removeEventListener("keydown", handleGlobalKeydown);
     };
   });
+
+  async function loadVersion() {
+    try {
+      appVersion = await GetVersion();
+    } catch (err) {
+      console.error("Failed to load version:", err);
+    }
+  }
 
   async function checkAuthStatus() {
     try {
@@ -125,7 +150,9 @@
     if (isIndexing) return;
 
     try {
-      await Refresh(refreshLimit);
+      const sanitizedLimit = Math.max(0, Math.trunc(Number(refreshLimit) || 0));
+      refreshLimit = sanitizedLimit;
+      await Refresh(sanitizedLimit);
     } catch (err) {
       status = `Refresh failed: ${err}`;
       toaster.error(`Refresh failed: ${err}`);
@@ -153,28 +180,61 @@
   async function loadPosts() {
     try {
       totalPosts = await CountPosts();
-      await performSearch(searchQuery, searchSource);
+      performSearch(searchQuery, searchSource, true);
     } catch (err) {
       console.error("Failed to load posts:", err);
       toaster.error("Failed to load posts");
     }
   }
 
-  async function performSearch(query: string, source: string) {
+  function clearSearchDebounce() {
+    if (searchDebounceTimer !== null) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+  }
+
+  async function runSearch(query: string, source: string, searchToken: number) {
     isSearching = true;
     try {
       const results = await Search(query.trim(), source, pageSize, sortColumn, sortDirection);
+      if (searchToken !== activeSearchToken) {
+        return;
+      }
+
       searchResults = results;
       if (selectedPost && !results.some((post) => post.uri === selectedPost?.uri)) {
         selectedPost = null;
       }
     } catch (err) {
+      if (searchToken !== activeSearchToken) {
+        return;
+      }
+
       console.error("Search failed:", err);
-      searchResults = [];
       toaster.error("Search failed");
     } finally {
-      isSearching = false;
+      if (searchToken === activeSearchToken) {
+        isSearching = false;
+      }
     }
+  }
+
+  function performSearch(query: string, source: string, immediate = false) {
+    clearSearchDebounce();
+    const searchToken = ++activeSearchToken;
+
+    const executeSearch = () => {
+      searchDebounceTimer = null;
+      void runSearch(query, source, searchToken);
+    };
+
+    if (immediate) {
+      executeSearch();
+      return;
+    }
+
+    searchDebounceTimer = setTimeout(executeSearch, SEARCH_DEBOUNCE_MS);
   }
 
   function handleSort(column: string) {
@@ -184,16 +244,21 @@
       sortColumn = column;
       sortDirection = "desc";
     }
-    performSearch(searchQuery, searchSource);
+    performSearch(searchQuery, searchSource, true);
   }
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Enter" && !isLoading) {
-      handleLogin();
+      void handleLogin();
     }
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && showAbout) {
+      showAbout = false;
+      return;
+    }
+
     if ((event.metaKey || event.ctrlKey) && event.key === "k") {
       event.preventDefault();
       const searchInput = document.getElementById("search-posts") as HTMLInputElement | null;
@@ -203,10 +268,10 @@
       }
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key === "r") {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "r") {
       event.preventDefault();
       if (!isIndexing) {
-        handleRefresh();
+        void handleRefresh();
       }
     }
 
@@ -214,6 +279,12 @@
       event.preventDefault();
       showLogs = !showLogs;
     }
+  }
+
+  function clearSearchFilters() {
+    searchQuery = "";
+    searchSource = "";
+    performSearch("", "", true);
   }
 </script>
 
@@ -232,23 +303,34 @@
         <div class="bg-surface border-outline rounded-lg border p-6">
           <div class="space-y-4">
             <div>
-              <label for="handle" class="text-muted mb-2 block font-sans text-sm"> Bluesky Handle </label>
-              <input
-                id="handle"
-                type="text"
-                placeholder="username.bsky.social"
-                bind:value={handle}
-                onkeydown={handleKeydown}
-                disabled={isLoading}
-                class="border-outline text-bright w-full rounded border bg-black px-4 py-2 font-mono text-sm placeholder-[#333] focus:border-[#333] focus:outline-none disabled:opacity-50" />
+              <label for="handle" class="text-muted mb-2 block font-sans text-sm">Bluesky Handle</label>
+              <div class="relative">
+                <input
+                  id="handle"
+                  type="text"
+                  placeholder="username.bsky.social"
+                  bind:value={handle}
+                  onkeydown={handleKeydown}
+                  disabled={isLoading}
+                  class="border-outline text-bright w-full rounded border bg-black px-4 py-2 pr-10 font-mono text-sm placeholder-[#333] focus:border-[#333] focus:outline-none disabled:opacity-50" />
+
+                {#if isLoading}
+                  <span class="text-muted pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                    <i class="i-ri-loader-4-line animate-spin text-base"></i>
+                  </span>
+                {/if}
+              </div>
             </div>
 
             <button
-              onclick={handleLogin}
+              onclick={() => void handleLogin()}
               disabled={isLoading || !handle.trim()}
               class="bg-surface border-outline hover:bg-outline text-bright w-full rounded border px-4 py-2 font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               {#if isLoading}
-                <span class="animate-pulse">Authenticating...</span>
+                <span class="flex items-center justify-center gap-2">
+                  <i class="i-ri-loader-4-line animate-spin text-base"></i>
+                  <span>Authenticating...</span>
+                </span>
               {:else}
                 Login with Bluesky
               {/if}
@@ -260,6 +342,16 @@
               <p class="text-muted font-mono text-xs">{status}</p>
             </div>
           {/if}
+
+          <div class="mt-4 flex items-center justify-between border-t border-white/6 pt-4">
+            <p class="text-muted font-mono text-xs tracking-[0.14em] uppercase">Version {appVersion}</p>
+            <button
+              type="button"
+              onclick={() => (showAbout = true)}
+              class="text-muted hover:text-bright font-sans text-xs transition-colors">
+              About
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -274,7 +366,16 @@
             <p class="text-muted font-mono text-xs">@{authInfo?.handle} · {totalPosts} posts indexed</p>
           </div>
 
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center justify-end gap-3">
+            <button
+              onclick={() => (showAbout = true)}
+              class="bg-surface border-outline hover:bg-outline text-bright rounded border px-3 py-2 font-mono text-xs transition-colors">
+              <span class="flex items-center gap-2">
+                <i class="i-ri-information-line"></i>
+                <span>{appVersion}</span>
+              </span>
+            </button>
+
             <button
               onclick={() => (showLogs = !showLogs)}
               class="bg-surface border-outline hover:bg-outline text-bright rounded border px-3 py-2 font-mono text-xs transition-colors {showLogs
@@ -305,7 +406,7 @@
             </div>
 
             <button
-              onclick={handleRefresh}
+              onclick={() => void handleRefresh()}
               disabled={isIndexing}
               class="bg-surface border-outline hover:bg-outline text-bright rounded border px-4 py-2 font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50">
               {#if isIndexing}
@@ -319,7 +420,7 @@
             </button>
 
             <button
-              onclick={handleLogout}
+              onclick={() => void handleLogout()}
               class="bg-surface border-outline hover:bg-outline text-bright rounded border px-4 py-2 font-sans transition-colors">
               <span class="flex items-center gap-2">
                 <i class="i-ri-logout-box-r-line"></i>
@@ -341,6 +442,30 @@
           </div>
         {:else if totalPosts === 0}
           <EmptyState onRefresh={handleRefresh} />
+        {:else if searchResults.length === 0}
+          <div
+            class="border-outline bg-surface flex h-full flex-col items-center justify-center rounded-[1.25rem] border px-8 py-12 text-center shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
+            <div class="text-muted mb-5 rounded-full border border-white/8 bg-black/70 p-4">
+              <i class="i-ri-search-eye-line text-2xl"></i>
+            </div>
+            <h2 class="text-bright font-serif text-2xl">No matching posts</h2>
+            <p class="text-muted mt-3 max-w-xl font-sans leading-6">
+              {#if hasSearchFilters}
+                No posts matched your current search. Try a different query, switch the source filter, or clear the
+                current filters to browse recent posts again.
+              {:else}
+                No posts are available for this view right now. Refresh your index and try again.
+              {/if}
+            </p>
+            {#if hasSearchFilters}
+              <button
+                type="button"
+                onclick={clearSearchFilters}
+                class="bg-surface border-outline hover:bg-outline text-bright mt-6 rounded-lg border px-5 py-2.5 font-sans text-sm transition-colors">
+                Clear Search
+              </button>
+            {/if}
+          </div>
         {:else}
           <div class="flex h-full min-h-0 flex-col gap-6 xl:flex-row">
             <div class="min-h-0 min-w-0 flex-1">
@@ -380,3 +505,49 @@
     </div>
   {/if}
 </main>
+
+{#if showAbout}
+  <div class="bg-surface/20 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <button type="button" class="absolute inset-0" aria-label="Close about dialog" onclick={() => (showAbout = false)}>
+    </button>
+
+    <section
+      class="border-outline bg-surface relative z-10 flex w-full max-w-lg flex-col gap-6 rounded-3xl border p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
+      transition:fade={{ duration: 180 }}>
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-muted font-mono text-xs tracking-[0.18em] uppercase">About</p>
+          <h2 class="mt-2 font-serif text-3xl">bsky-browser</h2>
+          <p class="text-muted mt-2 font-sans text-sm">Desktop search for your indexed Bluesky bookmarks and likes.</p>
+        </div>
+
+        <button
+          type="button"
+          class="text-muted hover:text-bright flex items-center rounded-full border border-white/8 p-2 transition-colors"
+          aria-label="Close about dialog"
+          onclick={() => (showAbout = false)}>
+          <i class="i-ri-close-line text-lg"></i>
+        </button>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div class="rounded-2xl border border-white/8 bg-black/50 p-4">
+          <p class="text-muted font-mono text-[11px] tracking-[0.16em] uppercase">Version</p>
+          <p class="mt-2 font-mono text-lg text-white">{appVersion}</p>
+        </div>
+
+        <div class="rounded-2xl border border-white/8 bg-black/50 p-4">
+          <p class="text-muted font-mono text-[11px] tracking-[0.16em] uppercase">Refresh Shortcut</p>
+          <p class="mt-2 font-mono text-lg text-white">Cmd/Ctrl + Shift + R</p>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-white/8 bg-black/50 p-4">
+        <p class="text-muted font-mono text-[11px] tracking-[0.16em] uppercase">Included</p>
+        <p class="text-bright mt-2 font-sans text-sm leading-6">
+          OAuth, Keyword Search, Rich Text Post Rendering, and Live Log Viewer.
+        </p>
+      </div>
+    </section>
+  </div>
+{/if}

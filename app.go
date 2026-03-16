@@ -75,6 +75,11 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 }
 
+// GetVersion returns the current application build version.
+func (a *App) GetVersion() string {
+	return appVersion()
+}
+
 // getDBPath returns the path to the shared database
 func getDBPath() string {
 	if dir := os.Getenv("BSKY_BROWSER_DATA"); dir != "" {

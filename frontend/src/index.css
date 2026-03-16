@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @plugin "@egoist/tailwindcss-icons";
+@plugin "@tailwindcss/forms";
 
 @theme {
   --font-mono: "JetBrains Mono Variable", monospace;
@@ -25,4 +26,8 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  @apply cursor-pointer;
 }

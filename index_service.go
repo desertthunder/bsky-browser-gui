@@ -60,6 +60,11 @@ func (s *IndexService) IsIndexing() bool {
 
 // Refresh fetches bookmarks and likes concurrently and indexes them
 func (s *IndexService) Refresh(limit int) error {
+	if limit < 0 {
+		LogWarnf("received negative refresh limit %d, clamping to 0", limit)
+		limit = 0
+	}
+
 	if !s.indexing.CompareAndSwap(false, true) {
 		return fmt.Errorf("indexing already in progress")
 	}

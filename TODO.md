@@ -79,7 +79,7 @@
 - [ ] `post_service_test.go` — draft CRUD, `CreatePost` record assembly (no network)
 - [ ] `account_service_test.go` — multi-account switching with temp directories
 - [ ] Expand `database_test.go` — `InsertPost` upsert, `CountPosts`, multi-account `UpsertAuth`, FTS5 ranking edge cases
-- [ ] Establish CI-friendly test target in `Taskfile.yml` (`task test`)
+- [x] Establish CI-friendly test target in `Taskfile.yml` (`task test`)
 
 ## Milestone 9 — Polish & Integration
 

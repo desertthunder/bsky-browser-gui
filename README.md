@@ -11,9 +11,10 @@ A desktop app for searching your Bluesky bookmarks and likes.
 - Authenticates with Bluesky using loopback OAuth.
 - Stores session state, tokens, and DPoP metadata in a shared SQLite database.
 - Indexes bookmarks and likes into a local FTS5-backed search index.
-- Lets you browse recent indexed posts or search by text.
+- Lets you browse recent indexed posts or search by text with debounced live queries.
+- Supports source filters, configurable result limits, and server-side sorting.
 - Renders rich-text facets for links, mentions, and hashtags.
-- Includes desktop-side refresh progress events and a frontend log viewer.
+  - Includes desktop-side refresh progress events, partial-refresh warnings, and a frontend log viewer.
 
 ## Screenshots
 
@@ -32,15 +33,17 @@ A desktop app for searching your Bluesky bookmarks and likes.
 1. Launch the app.
 2. Enter your Bluesky handle and complete OAuth in the browser.
 3. Click `Refresh` to index bookmarks and likes.
-4. Use the search box to run FTS queries, or leave it empty to browse recent posts.
-5. Filter results by `All`, `Saved`, or `Liked`.
-6. Click a row to open the original post on `bsky.app`.
+4. Use the search box to run FTS queries as you type, or leave it empty to browse recent posts.
+5. Filter results by `All`, `Saved`, or `Liked`, and adjust the result count from the `Results` selector.
+6. Click a row to inspect a post, or open `About` to view the current build version.
+7. Use `Open on Bluesky` in the reading pane to open the original post on `bsky.app`.
 
 ## Keyboard Shortcuts
 
 - `Cmd+K` or `Ctrl+K`: focus the search input
-- `Cmd+R` or `Ctrl+R`: refresh indexed data
+- `Cmd+Shift+R` or `Ctrl+Shift+R`: refresh indexed data
 - `Cmd+L` or `Ctrl+L`: toggle the log viewer
+- `Esc`: close the About dialog
 
 ## Project
 
@@ -79,17 +82,25 @@ Or:
 task dev
 ```
 
+To run the dev app with an explicit build tag:
+
+```bash
+task dev VERSION=v0.1.0
+```
+
 Useful checks:
 
 ```bash
 go test ./...
 pnpm --dir frontend check
+task lint
+task test
 ```
 
 <details>
 <summary>OAuth and Local Data</summary>
 
-- OAuth callback URL: `http://127.0.0.1:8787/callback`
+- OAuth callback URL: `http://127.0.0.1:<random-port>/callback`
 - Default database path: `~/.config/bsky-browser/bsky-browser.db`
 - Default log directory: `~/.config/bsky-browser/logs/`
 
@@ -127,7 +138,7 @@ You can override paths with:
 Create a macOS app bundle:
 
 ```bash
-wails build
+task build
 ```
 
 Verified output:
@@ -136,8 +147,14 @@ Verified output:
 build/bin/bsky-browser-gui.app
 ```
 
-Equivalent task:
+To embed a specific build tag, override `VERSION`:
 
 ```bash
-task build
+task build VERSION=v0.1.0
+```
+
+The desktop binary also reports its embedded build tag:
+
+```bash
+./bsky-browser-gui --version
 ```

@@ -20,6 +20,10 @@
     onSearch(query, source);
   }
 
+  function handleInput() {
+    onSearch(query, source);
+  }
+
   function handleClick(src: string) {
     source = src;
     onSearch(query, source);
@@ -37,6 +41,7 @@
       type="search"
       placeholder="Search posts..."
       bind:value={query}
+      oninput={handleInput}
       enterkeyhint="search"
       class="border-outline text-muted w-full rounded-lg border bg-black px-4 py-2.5 font-mono text-sm placeholder-[#333] focus:border-[#333] focus:outline-none" />
     <div class="absolute top-1/2 right-3 -translate-y-1/2">
@@ -71,7 +76,7 @@
     <select
       bind:value={pageSize}
       onchange={handlePageSizeChange}
-      class="border-outline bg-surface text-bright rounded-lg border px-3 py-2 font-mono text-sm focus:border-[#333] focus:outline-none">
+      class="border-outline bg-surface text-bright rounded-lg border px-4 py-2 font-mono text-sm focus:border-[#333] focus:outline-none">
       {#each pageSizes as size}
         <option value={size}>{size}</option>
       {/each}
