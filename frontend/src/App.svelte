@@ -35,12 +35,14 @@
   let searchQuery = $state("");
   let searchSource = $state("");
   let searchResults = $state<main.SearchResult[]>([]);
+  let totalSearchResults = $state(0);
   let totalPosts = $state(0);
   let sortColumn = $state("created_at");
   let sortDirection = $state<"asc" | "desc">("desc");
   let isSearching = $state(false);
   let showLogs = $state(false);
   let selectedPost = $state<main.SearchResult | null>(null);
+  let currentPage = $state(1);
   let pageSize = $state(25);
   let appVersion = $state("dev");
   let showAbout = $state(false);
@@ -166,10 +168,12 @@
       authInfo = null;
       searchResults = [];
       totalPosts = 0;
+      totalSearchResults = 0;
       searchQuery = "";
       searchSource = "";
       handle = "";
       selectedPost = null;
+      currentPage = 1;
       status = "Please log in to continue";
       toaster.success("Logged out");
     } catch (err) {
@@ -180,7 +184,7 @@
   async function loadPosts() {
     try {
       totalPosts = await CountPosts();
-      performSearch(searchQuery, searchSource, true);
+      performSearch(searchQuery, searchSource, true, 1);
     } catch (err) {
       console.error("Failed to load posts:", err);
       toaster.error("Failed to load posts");
@@ -194,16 +198,18 @@
     }
   }
 
-  async function runSearch(query: string, source: string, searchToken: number) {
+  async function runSearch(query: string, source: string, page: number, searchToken: number) {
     isSearching = true;
     try {
-      const results = await Search(query.trim(), source, pageSize, sortColumn, sortDirection);
+      const searchPage = await Search(query.trim(), source, page, pageSize, sortColumn, sortDirection);
       if (searchToken !== activeSearchToken) {
         return;
       }
 
-      searchResults = results;
-      if (selectedPost && !results.some((post) => post.uri === selectedPost?.uri)) {
+      searchResults = searchPage.results;
+      totalSearchResults = searchPage.total;
+      currentPage = searchPage.page;
+      if (selectedPost && !searchPage.results.some((post) => post.uri === selectedPost?.uri)) {
         selectedPost = null;
       }
     } catch (err) {
@@ -220,13 +226,13 @@
     }
   }
 
-  function performSearch(query: string, source: string, immediate = false) {
+  function performSearch(query: string, source: string, immediate = false, page = 1) {
     clearSearchDebounce();
     const searchToken = ++activeSearchToken;
 
     const executeSearch = () => {
       searchDebounceTimer = null;
-      void runSearch(query, source, searchToken);
+      void runSearch(query, source, page, searchToken);
     };
 
     if (immediate) {
@@ -244,7 +250,7 @@
       sortColumn = column;
       sortDirection = "desc";
     }
-    performSearch(searchQuery, searchSource, true);
+    performSearch(searchQuery, searchSource, true, currentPage);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -284,7 +290,20 @@
   function clearSearchFilters() {
     searchQuery = "";
     searchSource = "";
-    performSearch("", "", true);
+    performSearch("", "", true, 1);
+  }
+
+  function handleSearchInput(query: string, source: string) {
+    currentPage = 1;
+    performSearch(query, source, false, 1);
+  }
+
+  function handlePageChange(page: number) {
+    if (page === currentPage) {
+      return;
+    }
+
+    performSearch(searchQuery, searchSource, true, page);
   }
 </script>
 
@@ -432,7 +451,7 @@
       </header>
 
       <div class="border-outline border-b px-6 py-4">
-        <SearchBar bind:query={searchQuery} bind:source={searchSource} bind:pageSize onSearch={performSearch} />
+        <SearchBar bind:query={searchQuery} bind:source={searchSource} bind:pageSize onSearch={handleSearchInput} />
       </div>
 
       <main class="flex-1 overflow-hidden p-6">
@@ -471,10 +490,14 @@
             <div class="min-h-0 min-w-0 flex-1">
               <DataTable
                 posts={searchResults}
+                totalPosts={totalSearchResults}
+                {currentPage}
+                {pageSize}
                 {sortColumn}
                 {sortDirection}
                 selectedPostURI={selectedPost?.uri ?? null}
                 onSort={handleSort}
+                onPageChange={handlePageChange}
                 onOpenPost={(post) => {
                   selectedPost = post;
                 }} />

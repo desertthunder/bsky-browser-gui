@@ -244,11 +244,11 @@ func (s *IndexService) batchWriter(ch <-chan *PostResult, batchSize int) (int, i
 type BlueskyClient struct {
 	session *oauth.ClientSession
 	auth    *Auth
+	reqMu   sync.Mutex
 }
 
 // fetchBookmarks writes bookmarks to the provided channel in batches
 func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
-	apiClient := c.session.APIClient()
 	var cursor string
 	seenCursors := make(map[string]struct{})
 	batchSize := int64(100)
@@ -257,7 +257,7 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc 
 	for {
 		LogInfof("fetching bookmarks page: cursor=%q", cursor)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		resp, err := bsky.BookmarkGetBookmarks(ctx, apiClient, cursor, batchSize)
+		resp, err := c.getBookmarksPage(ctx, cursor, batchSize)
 		cancel()
 		if err != nil {
 			ch <- &PostResult{Error: fmt.Errorf("failed to fetch bookmarks: %w", err)}
@@ -320,7 +320,6 @@ func (c *BlueskyClient) fetchBookmarks(maxPosts int, ch chan<- *PostResult, svc 
 
 // fetchLikes writes likes to the provided channel in batches
 func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *IndexService) {
-	apiClient := c.session.APIClient()
 	var cursor string
 	seenCursors := make(map[string]struct{})
 	batchSize := int64(100)
@@ -329,7 +328,7 @@ func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *Ind
 	for {
 		LogInfof("fetching likes page: cursor=%q", cursor)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		resp, err := bsky.FeedGetActorLikes(ctx, apiClient, c.auth.DID, cursor, batchSize)
+		resp, err := c.getLikesPage(ctx, cursor, batchSize)
 		cancel()
 		if err != nil {
 			ch <- &PostResult{Error: fmt.Errorf("failed to fetch likes: %w", err)}
@@ -384,6 +383,20 @@ func (c *BlueskyClient) fetchLikes(maxPosts int, ch chan<- *PostResult, svc *Ind
 		seenCursors[nextCursor] = struct{}{}
 		cursor = nextCursor
 	}
+}
+
+func (c *BlueskyClient) getBookmarksPage(ctx context.Context, cursor string, batchSize int64) (*bsky.BookmarkGetBookmarks_Output, error) {
+	c.reqMu.Lock()
+	defer c.reqMu.Unlock()
+
+	return bsky.BookmarkGetBookmarks(ctx, c.session.APIClient(), cursor, batchSize)
+}
+
+func (c *BlueskyClient) getLikesPage(ctx context.Context, cursor string, batchSize int64) (*bsky.FeedGetActorLikes_Output, error) {
+	c.reqMu.Lock()
+	defer c.reqMu.Unlock()
+
+	return bsky.FeedGetActorLikes(ctx, c.session.APIClient(), c.auth.DID, cursor, batchSize)
 }
 
 // convertPostView converts a FeedDefs_PostView to our Post struct

@@ -42,3 +42,11 @@ type SearchResult struct {
 	Post
 	Rank float64 `json:"rank"`
 }
+
+// SearchPage represents a page of search results and its total match count.
+type SearchPage struct {
+	Results  []SearchResult `json:"results"`
+	Total    int            `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"page_size"`
+}

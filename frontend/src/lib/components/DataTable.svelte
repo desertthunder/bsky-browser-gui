@@ -5,14 +5,29 @@
 
   interface Props {
     posts: main.SearchResult[];
+    totalPosts: number;
+    currentPage: number;
+    pageSize: number;
     sortColumn: string;
     sortDirection: "asc" | "desc";
     onSort: (column: string) => void;
+    onPageChange: (page: number) => void;
     onOpenPost: (post: main.SearchResult) => void;
     selectedPostURI?: string | null;
   }
 
-  let { posts, sortColumn, sortDirection, onSort, onOpenPost, selectedPostURI = null }: Props = $props();
+  let {
+    posts,
+    totalPosts,
+    currentPage,
+    pageSize,
+    sortColumn,
+    sortDirection,
+    onSort,
+    onPageChange,
+    onOpenPost,
+    selectedPostURI = null,
+  }: Props = $props();
 
   const columns = [
     { key: "author_handle", label: "Author", width: "w-36" },
@@ -24,13 +39,9 @@
     { key: "source", label: "Source", width: "w-28" },
   ];
 
-  const pageSize = 12;
-  let currentPage = $state(1);
-
-  let totalPages = $derived(Math.max(1, Math.ceil(posts.length / pageSize)));
-  let paginatedPosts = $derived(posts.slice((currentPage - 1) * pageSize, currentPage * pageSize));
-  let pageStart = $derived(posts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1);
-  let pageEnd = $derived(Math.min(currentPage * pageSize, posts.length));
+  let totalPages = $derived(Math.max(1, Math.ceil(totalPosts / pageSize)));
+  let pageStart = $derived(totalPosts === 0 ? 0 : (currentPage - 1) * pageSize + 1);
+  let pageEnd = $derived(Math.min(pageStart + posts.length - 1, totalPosts));
   let visiblePages = $derived.by(() => {
     const pages: number[] = [];
     const start = Math.max(1, currentPage - 2);
@@ -42,22 +53,6 @@
 
     return pages;
   });
-
-  $effect(() => {
-    posts;
-    currentPage = 1;
-  });
-
-  $effect(() => {
-    if (currentPage > totalPages) {
-      currentPage = totalPages;
-    }
-  });
-
-  function getSortIcon(column: string): string {
-    if (sortColumn !== column) return "↕";
-    return sortDirection === "asc" ? "↑" : "↓";
-  }
 </script>
 
 {#snippet columnLabel(label: string)}
@@ -110,7 +105,7 @@
       </thead>
 
       <tbody class="divide-outline divide-y">
-        {#each paginatedPosts as post}
+        {#each posts as post}
           <tr
             class="group cursor-pointer transition-colors {selectedPostURI === post.uri
               ? 'bg-primary/10'
@@ -167,14 +162,14 @@
             <td colspan={columns.length} class="border-outline border-t px-4 py-3">
               <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <p class="text-muted font-mono text-xs tracking-[0.14em] uppercase">
-                  Showing {pageStart}-{pageEnd} of {posts.length}
+                  Showing {pageStart}-{pageEnd} of {totalPosts}
                 </p>
 
                 <div class="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     class="border-outline text-muted hover:text-bright rounded-full border px-3 py-1.5 font-mono text-xs transition-colors disabled:opacity-40"
-                    onclick={() => (currentPage = Math.max(1, currentPage - 1))}
+                    onclick={() => onPageChange(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}>
                     Prev
                   </button>
@@ -186,7 +181,7 @@
                       currentPage
                         ? 'border-primary bg-primary/15 text-primary'
                         : 'border-outline text-muted hover:text-bright'}"
-                      onclick={() => (currentPage = page)}>
+                      onclick={() => onPageChange(page)}>
                       {page}
                     </button>
                   {/each}
@@ -194,7 +189,7 @@
                   <button
                     type="button"
                     class="border-outline text-muted hover:text-bright rounded-full border px-3 py-1.5 font-mono text-xs transition-colors disabled:opacity-40"
-                    onclick={() => (currentPage = Math.min(totalPages, currentPage + 1))}
+                    onclick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
                     disabled={currentPage === totalPages}>
                     Next
                   </button>

@@ -6,6 +6,6 @@ export function CountPosts() {
   return window['go']['main']['SearchService']['CountPosts']();
 }
 
-export function Search(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['SearchService']['Search'](arg1, arg2, arg3, arg4, arg5);
+export function Search(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['SearchService']['Search'](arg1, arg2, arg3, arg4, arg5, arg6);
 }

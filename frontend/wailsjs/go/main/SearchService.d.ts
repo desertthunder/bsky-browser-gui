@@ -4,4 +4,4 @@ import {main} from '../models';
 
 export function CountPosts():Promise<number>;
 
-export function Search(arg1:string,arg2:string,arg3:number,arg4:string,arg5:string):Promise<Array<main.SearchResult>>;
+export function Search(arg1:string,arg2:string,arg3:number,arg4:number,arg5:string,arg6:string):Promise<main.SearchPage>;

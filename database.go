@@ -483,17 +483,21 @@ var validSortColumns = map[string]bool{
 	"text":          true,
 }
 
-// SearchPosts searches posts using FTS5
-func SearchPosts(query string, source string, limit int, sortColumn string, sortDirection string) ([]SearchResult, error) {
-	const defaultLimit = 25
-	const maxLimit = 100
+// SearchPosts searches posts using FTS5 with server-side pagination.
+func SearchPosts(query string, source string, page int, pageSize int, sortColumn string, sortDirection string) (SearchPage, error) {
+	const defaultPageSize = 25
+	const maxPageSize = 100
 
-	if limit <= 0 {
-		limit = defaultLimit
+	if page <= 0 {
+		page = 1
 	}
-	if limit > maxLimit {
-		limit = maxLimit
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
 	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+	offset := (page - 1) * pageSize
 
 	// Validate and default sort parameters
 	if sortColumn == "" || !validSortColumns[sortColumn] {
@@ -508,10 +512,23 @@ func SearchPosts(query string, source string, limit int, sortColumn string, sort
 		query = ""
 	}
 
-	LogInfof("searching posts: query=%s, source=%s, limit=%d, sort=%s %s", query, source, limit, sortColumn, sortDirection)
+	LogInfof(
+		"searching posts: query=%s, source=%s, page=%d, pageSize=%d, sort=%s %s",
+		query,
+		source,
+		page,
+		pageSize,
+		sortColumn,
+		sortDirection,
+	)
 
 	if query == "" {
-		return listRecentPosts(source, limit, sortColumn, sortDirection)
+		return listRecentPosts(source, page, pageSize, offset, sortColumn, sortDirection)
+	}
+
+	total, err := countFilteredPosts(query, source)
+	if err != nil {
+		return SearchPage{}, err
 	}
 
 	sqlQuery := `
@@ -523,13 +540,13 @@ func SearchPosts(query string, source string, limit int, sortColumn string, sort
 		WHERE posts_fts MATCH ?
 		  AND (? = '' OR p.source = ?)
 		ORDER BY p.` + sortColumn + ` ` + sortDirection + `
-		LIMIT ?
+		LIMIT ? OFFSET ?
 	`
 
-	rows, err := db.Query(sqlQuery, query, source, source, limit)
+	rows, err := db.Query(sqlQuery, query, source, source, pageSize, offset)
 	if err != nil {
 		LogErrorf("failed to execute search query: %v", err)
-		return nil, err
+		return SearchPage{}, err
 	}
 	defer rows.Close()
 
@@ -553,7 +570,7 @@ func SearchPosts(query string, source string, limit int, sortColumn string, sort
 			&r.Rank,
 		)
 		if err != nil {
-			return nil, err
+			return SearchPage{}, err
 		}
 
 		r.CreatedAt = parseStoredTime(createdAt)
@@ -561,11 +578,25 @@ func SearchPosts(query string, source string, limit int, sortColumn string, sort
 		results = append(results, r)
 	}
 
-	LogInfof("search completed: %d results", len(results))
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return SearchPage{}, err
+	}
+
+	LogInfof("search completed: %d results (total=%d)", len(results), total)
+	return SearchPage{
+		Results:  results,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
 }
 
-func listRecentPosts(source string, limit int, sortColumn string, sortDirection string) ([]SearchResult, error) {
+func listRecentPosts(source string, page int, pageSize int, offset int, sortColumn string, sortDirection string) (SearchPage, error) {
+	total, err := countRecentPosts(source)
+	if err != nil {
+		return SearchPage{}, err
+	}
+
 	// Build query with proper ORDER BY - note: sortColumn and sortDirection are validated by caller
 	query := fmt.Sprintf(`
 		SELECT uri, cid, author_did, author_handle, text, created_at,
@@ -573,13 +604,13 @@ func listRecentPosts(source string, limit int, sortColumn string, sortDirection 
 		FROM posts
 		WHERE (? = '' OR source = ?)
 		ORDER BY %s %s
-		LIMIT ?
+		LIMIT ? OFFSET ?
 	`, sortColumn, sortDirection)
 
-	rows, err := db.Query(query, source, source, limit)
+	rows, err := db.Query(query, source, source, pageSize, offset)
 	if err != nil {
 		LogErrorf("failed to list recent posts: %v", err)
-		return nil, err
+		return SearchPage{}, err
 	}
 	defer rows.Close()
 
@@ -602,7 +633,7 @@ func listRecentPosts(source string, limit int, sortColumn string, sortDirection 
 			&indexedAt,
 		)
 		if err != nil {
-			return nil, err
+			return SearchPage{}, err
 		}
 
 		r.CreatedAt = parseStoredTime(createdAt)
@@ -610,8 +641,51 @@ func listRecentPosts(source string, limit int, sortColumn string, sortDirection 
 		results = append(results, r)
 	}
 
-	LogInfof("browse completed: %d results", len(results))
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return SearchPage{}, err
+	}
+
+	LogInfof("browse completed: %d results (total=%d)", len(results), total)
+	return SearchPage{
+		Results:  results,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+func countRecentPosts(source string) (int, error) {
+	const countQuery = `
+		SELECT COUNT(*)
+		FROM posts
+		WHERE (? = '' OR source = ?)
+	`
+
+	var total int
+	if err := db.QueryRow(countQuery, source, source).Scan(&total); err != nil {
+		LogErrorf("failed to count recent posts: %v", err)
+		return 0, err
+	}
+
+	return total, nil
+}
+
+func countFilteredPosts(query string, source string) (int, error) {
+	const countQuery = `
+		SELECT COUNT(*)
+		FROM posts_fts
+		JOIN posts p ON posts_fts.rowid = p.rowid
+		WHERE posts_fts MATCH ?
+		  AND (? = '' OR p.source = ?)
+	`
+
+	var total int
+	if err := db.QueryRow(countQuery, query, source, source).Scan(&total); err != nil {
+		LogErrorf("failed to count filtered posts: %v", err)
+		return 0, err
+	}
+
+	return total, nil
 }
 
 // parseStoredTimeCache caches the last successful time layout for faster parsing

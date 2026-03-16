@@ -57,29 +57,77 @@ func TestSearchPostsBrowseMode(t *testing.T) {
 		}
 	}
 
-	results, err := SearchPosts("", "", 25, "created_at", "desc")
+	page, err := SearchPosts("", "", 1, 25, "created_at", "desc")
 	if err != nil {
 		t.Fatalf("SearchPosts(empty) error = %v", err)
 	}
-	if len(results) != 2 {
-		t.Fatalf("SearchPosts(empty) len = %d, want 2", len(results))
+	if page.Total != 2 {
+		t.Fatalf("SearchPosts(empty) total = %d, want 2", page.Total)
 	}
-	if results[0].URI != posts[1].URI {
-		t.Fatalf("SearchPosts(empty) first URI = %q, want %q", results[0].URI, posts[1].URI)
+	if len(page.Results) != 2 {
+		t.Fatalf("SearchPosts(empty) len = %d, want 2", len(page.Results))
 	}
-	if results[0].CreatedAt.IsZero() {
+	if page.Results[0].URI != posts[1].URI {
+		t.Fatalf("SearchPosts(empty) first URI = %q, want %q", page.Results[0].URI, posts[1].URI)
+	}
+	if page.Results[0].CreatedAt.IsZero() {
 		t.Fatal("SearchPosts(empty) CreatedAt is zero, want parsed timestamp")
 	}
 
-	starResults, err := SearchPosts("*", "saved", 25, "created_at", "desc")
+	starPage, err := SearchPosts("*", "saved", 1, 25, "created_at", "desc")
 	if err != nil {
 		t.Fatalf("SearchPosts(*) error = %v", err)
 	}
-	if len(starResults) != 1 {
-		t.Fatalf("SearchPosts(*) len = %d, want 1", len(starResults))
+	if starPage.Total != 1 {
+		t.Fatalf("SearchPosts(*) total = %d, want 1", starPage.Total)
 	}
-	if starResults[0].Source != "saved" {
-		t.Fatalf("SearchPosts(*) source = %q, want %q", starResults[0].Source, "saved")
+	if len(starPage.Results) != 1 {
+		t.Fatalf("SearchPosts(*) len = %d, want 1", len(starPage.Results))
+	}
+	if starPage.Results[0].Source != "saved" {
+		t.Fatalf("SearchPosts(*) source = %q, want %q", starPage.Results[0].Source, "saved")
+	}
+}
+
+func TestSearchPostsPagination(t *testing.T) {
+	openTestDB(t)
+
+	for i := range 5 {
+		post := &Post{
+			URI:          "at://did:plc:test/app.bsky.feed.post/" + string(rune('a'+i)),
+			CID:          "cid-" + string(rune('a'+i)),
+			AuthorDID:    "did:plc:test",
+			AuthorHandle: "alice.test",
+			Text:         "post",
+			CreatedAt:    time.Date(2026, 3, 10+i, 12, 0, 0, 0, time.UTC),
+			Source:       "saved",
+		}
+
+		if err := InsertPost(post); err != nil {
+			t.Fatalf("InsertPost() error = %v", err)
+		}
+	}
+
+	page1, err := SearchPosts("", "", 1, 2, "created_at", "desc")
+	if err != nil {
+		t.Fatalf("SearchPosts(page1) error = %v", err)
+	}
+	if page1.Total != 5 {
+		t.Fatalf("SearchPosts(page1) total = %d, want 5", page1.Total)
+	}
+	if len(page1.Results) != 2 {
+		t.Fatalf("SearchPosts(page1) len = %d, want 2", len(page1.Results))
+	}
+
+	page2, err := SearchPosts("", "", 2, 2, "created_at", "desc")
+	if err != nil {
+		t.Fatalf("SearchPosts(page2) error = %v", err)
+	}
+	if len(page2.Results) != 2 {
+		t.Fatalf("SearchPosts(page2) len = %d, want 2", len(page2.Results))
+	}
+	if page1.Results[0].URI == page2.Results[0].URI {
+		t.Fatal("SearchPosts pagination returned the same first row for page 1 and page 2")
 	}
 }
 
