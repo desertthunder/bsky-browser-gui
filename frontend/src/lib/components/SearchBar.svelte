@@ -1,10 +1,5 @@
 <script lang="ts">
-  interface Props {
-    query: string;
-    source: string;
-    pageSize: number;
-    onSearch: (query: string, source: string) => void;
-  }
+  type Props = { query: string; source: string; pageSize: number; onSearch: (query: string, source: string) => void };
 
   let { query = $bindable(), source = $bindable(), pageSize = $bindable(), onSearch }: Props = $props();
 
@@ -13,7 +8,8 @@
     { value: "saved", label: "Saved" },
     { value: "liked", label: "Liked" },
   ];
-  const pageSizes = [25, 50, 100];
+
+  const pageSizes = [10, 25, 50, 100];
 
   function handleSubmit(e: Event) {
     e.preventDefault();

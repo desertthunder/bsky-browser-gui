@@ -114,69 +114,81 @@
 </script>
 
 {#if visible}
-  <div class="border-outline flex flex-col border-t bg-black">
-    <!-- Header -->
-    <div class="bg-surface border-outline flex items-center justify-between border-b px-4 py-2">
-      <div class="flex items-center gap-2">
-        <span class="text-bright font-mono text-sm">Logs</span>
-        <span class="text-muted font-mono text-xs">({logs.length})</span>
+  <div class="border-outline bg-surface/95 border-t shadow-[0_-18px_48px_rgba(0,0,0,0.35)] backdrop-blur">
+    <div class="bg-surface border-outline relative flex items-center justify-between border-b px-4 py-2.5">
+      <div class="flex items-center gap-3">
+        <div
+          class="bg-primary/12 text-primary flex h-8 w-8 items-center justify-center rounded-full border border-white/8">
+          <i class="i-ri-terminal-box-line text-sm"></i>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-bright font-mono text-sm">Logs</span>
+          <span class="text-muted font-mono text-xs">({logs.length})</span>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2">
-        <!-- Level Filter Buttons -->
-        <div class="mr-4 flex items-center gap-1">
+      <div class="text-muted hidden items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase md:flex">
+        <span class="rounded-full border border-white/8 px-2 py-1">Integrated Console</span>
+        <span class="rounded-full border border-white/8 px-2 py-1">{scrollLock ? "Pinned" : "Follow"}</span>
+      </div>
+
+      <div class="absolute top-0 left-1/2 h-1.5 w-24 -translate-x-1/2 rounded-full bg-white/10"></div>
+    </div>
+
+    <div class="flex h-72 min-h-0 flex-1 flex-col bg-black/80">
+      <div class="border-outline flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
+        <div class="flex flex-wrap items-center gap-1">
           {#each ["ALL", ...levels] as level}
             <button
               onclick={() => setFilterLevel(level as LogLevel | "ALL")}
-              class="rounded px-2 py-1 font-mono text-xs transition-colors {filterLevel === level
+              class="rounded-full px-2.5 py-1 font-mono text-xs transition-colors {filterLevel === level
                 ? getLevelBgColor(level) + ' text-white'
-                : 'text-muted hover:text-bright bg-black'}">
+                : 'bg-surface text-muted hover:text-bright border border-white/6'}">
               {level}
             </button>
           {/each}
         </div>
 
-        <!-- Scroll Lock Toggle -->
-        <button
-          onclick={toggleScrollLock}
-          class="rounded px-2 py-1 font-mono text-xs transition-colors {scrollLock
-            ? 'bg-yellow-600 text-white'
-            : 'text-muted hover:text-bright bg-black'}"
-          title={scrollLock ? "Scroll locked" : "Auto-scroll enabled"}>
-          {#if scrollLock}
-            <span class="flex items-center">
-              <i class="i-ri-lock-2-line"></i>
-            </span>
-          {:else}
-            <span class="flex items-center">
-              <i class="i-ri-arrow-down-box-line"></i>
-            </span>
-          {/if}
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            onclick={toggleScrollLock}
+            class="rounded-full px-3 py-1.5 font-mono text-xs transition-colors {scrollLock
+              ? 'bg-yellow-600 text-white'
+              : 'bg-surface text-muted hover:text-bright border border-white/6'}"
+            title={scrollLock ? "Scroll locked" : "Auto-scroll enabled"}>
+            {#if scrollLock}
+              <span class="flex items-center gap-2">
+                <i class="i-ri-lock-2-line"></i>
+                <span>Locked</span>
+              </span>
+            {:else}
+              <span class="flex items-center gap-2">
+                <i class="i-ri-arrow-down-box-line"></i>
+                <span>Follow</span>
+              </span>
+            {/if}
+          </button>
 
-        <!-- Clear Button -->
-        <button
-          onclick={clearLogs}
-          class="text-muted rounded bg-black px-2 py-1 font-mono text-xs transition-colors hover:text-red-400">
-          Clear
-        </button>
-      </div>
-    </div>
-
-    <!-- Log Container -->
-    <div
-      bind:this={logContainer}
-      class="flex-1 space-y-0.5 overflow-y-auto p-2 font-mono text-xs"
-      style="max-height: 200px;">
-      {#each filteredLogs() as log}
-        <div class="flex items-start gap-2 rounded px-1 hover:bg-white/5">
-          <span class="text-muted shrink-0">{formatTimestamp(log.timestamp)}</span>
-          <span class="{getLevelColor(log.level)} w-12 shrink-0">[{log.level}]</span>
-          <span class="text-bright break-all">{log.message}</span>
+          <button
+            onclick={clearLogs}
+            class="bg-surface text-muted rounded-full border border-white/6 px-3 py-1.5 font-mono text-xs transition-colors hover:text-red-400">
+            Clear
+          </button>
         </div>
-      {:else}
-        <div class="text-muted text-center py-4">No logs</div>
-      {/each}
+      </div>
+
+      <div bind:this={logContainer} class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3 font-mono text-xs">
+        {#each filteredLogs() as log}
+          <div
+            class="flex items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 hover:border-white/6 hover:bg-white/4">
+            <span class="text-muted shrink-0">{formatTimestamp(log.timestamp)}</span>
+            <span class="{getLevelColor(log.level)} w-12 shrink-0">[{log.level}]</span>
+            <span class="text-bright break-all">{log.message}</span>
+          </div>
+        {:else}
+          <div class="text-muted py-8 text-center">No logs</div>
+        {/each}
+      </div>
     </div>
   </div>
 {/if}

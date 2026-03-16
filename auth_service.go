@@ -158,7 +158,7 @@ func (s *AuthService) exchangeCode(ctx context.Context, data string) error {
 		handle = current.Handle
 	}
 
-	auth := authFromSessionData(sessData, handle)
+	auth := authFromSessionData(sessData, handle, oauthCallbackURL(s.port))
 
 	if err := UpsertAuth(auth); err != nil {
 		return fmt.Errorf("failed to persist auth: %w", err)
@@ -175,6 +175,9 @@ func (s *AuthService) Whoami(force bool) (*Auth, error) {
 	}
 	if auth == nil {
 		return nil, fmt.Errorf("not logged in")
+	}
+	if authRequiresRelogin(auth) {
+		return nil, fmt.Errorf("stored session requires re-login")
 	}
 
 	if force || strings.HasPrefix(auth.Handle, "did:") {
@@ -208,6 +211,10 @@ func (s *AuthService) IsAuthenticated() bool {
 	if err != nil {
 		return false
 	}
+	if authRequiresRelogin(auth) {
+		LogWarnf("forcing re-login for %s because the stored OAuth callback URL is missing", auth.DID)
+		return false
+	}
 	return auth != nil
 }
 
@@ -220,13 +227,16 @@ func (s *AuthService) RefreshSession() error {
 	if auth == nil {
 		return fmt.Errorf("no session found")
 	}
+	if authRequiresRelogin(auth) {
+		return fmt.Errorf("stored session requires re-login")
+	}
 
 	if auth.SessionID == "" {
 		return nil
 	}
 
 	store := NewSQLiteOAuthStore()
-	app := newOAuthApp(store, 0)
+	app := newOAuthAppForAuth(store, auth)
 
 	did, err := syntax.ParseDID(auth.DID)
 	if err != nil {
@@ -246,7 +256,7 @@ func (s *AuthService) RefreshSession() error {
 		return fmt.Errorf("failed to refresh tokens: %w", err)
 	}
 
-	if err := UpsertAuth(authFromSessionData(session.Data, auth.Handle)); err != nil {
+	if err := UpsertAuth(authFromSessionData(session.Data, auth.Handle, auth.OAuthCallbackURL)); err != nil {
 		return fmt.Errorf("failed to persist refreshed session: %w", err)
 	}
 
@@ -265,7 +275,7 @@ func (s *AuthService) Logout() error {
 
 	if auth.SessionID != "" {
 		store := NewSQLiteOAuthStore()
-		app := newOAuthApp(store, 0)
+		app := newOAuthAppForAuth(store, auth)
 
 		did, err := syntax.ParseDID(auth.DID)
 		if err == nil {
@@ -298,6 +308,10 @@ func (s *AuthService) Logout() error {
 	}
 
 	return nil
+}
+
+func authRequiresRelogin(auth *Auth) bool {
+	return auth != nil && auth.SessionID != "" && auth.OAuthCallbackURL == ""
 }
 
 func openBrowser(url string) error {

@@ -108,8 +108,8 @@
         {#each posts as post}
           <tr
             class="group cursor-pointer transition-colors {selectedPostURI === post.uri
-              ? 'bg-primary/10'
-              : 'hover:bg-black/50'}"
+              ? 'bg-outline/80'
+              : 'hover:bg-outline/50'}"
             onclick={() => onOpenPost(post)}>
             <td class="text-muted truncate px-4 py-3 font-mono text-xs">
               @{post.author_handle}

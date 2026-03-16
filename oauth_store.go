@@ -22,12 +22,25 @@ func oauthConfig(port int) oauth.ClientConfig {
 	return oauth.NewLocalhostConfig(oauthCallbackURL(port), append([]string(nil), oauthScopes...))
 }
 
+func oauthConfigForCallbackURL(callbackURL string) oauth.ClientConfig {
+	return oauth.NewLocalhostConfig(callbackURL, append([]string(nil), oauthScopes...))
+}
+
 func newOAuthApp(store oauth.ClientAuthStore, port int) *oauth.ClientApp {
 	config := oauthConfig(port)
 	return oauth.NewClientApp(&config, store)
 }
 
-func authFromSessionData(sess *oauth.ClientSessionData, handle string) *Auth {
+func newOAuthAppForAuth(store oauth.ClientAuthStore, auth *Auth) *oauth.ClientApp {
+	if auth != nil && auth.OAuthCallbackURL != "" {
+		config := oauthConfigForCallbackURL(auth.OAuthCallbackURL)
+		return oauth.NewClientApp(&config, store)
+	}
+
+	return newOAuthApp(store, 0)
+}
+
+func authFromSessionData(sess *oauth.ClientSessionData, handle string, callbackURL string) *Auth {
 	if handle == "" {
 		handle = sess.AccountDID.String()
 	}
@@ -42,6 +55,7 @@ func authFromSessionData(sess *oauth.ClientSessionData, handle string) *Auth {
 		AuthServerURL:                sess.AuthServerURL,
 		AuthServerTokenEndpoint:      sess.AuthServerTokenEndpoint,
 		AuthServerRevocationEndpoint: sess.AuthServerRevocationEndpoint,
+		OAuthCallbackURL:             callbackURL,
 		DPoPAuthNonce:                sess.DPoPAuthServerNonce,
 		DPoPHostNonce:                sess.DPoPHostNonce,
 		DPoPPrivateKey:               sess.DPoPPrivateKeyMultibase,
@@ -101,11 +115,13 @@ func (s *SQLiteOAuthStore) SaveSession(ctx context.Context, sess oauth.ClientSes
 	}
 
 	handle := ""
+	callbackURL := ""
 	if auth != nil {
 		handle = auth.Handle
+		callbackURL = auth.OAuthCallbackURL
 	}
 
-	return UpsertAuth(authFromSessionData(&sess, handle))
+	return UpsertAuth(authFromSessionData(&sess, handle, callbackURL))
 }
 
 func (s *SQLiteOAuthStore) DeleteSession(ctx context.Context, did syntax.DID, sessionID string) error {

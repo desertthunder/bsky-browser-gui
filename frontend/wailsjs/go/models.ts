@@ -10,6 +10,7 @@ export namespace main {
 	    auth_server_url: string;
 	    auth_server_token_endpoint: string;
 	    auth_server_revocation_endpoint: string;
+	    oauth_callback_url: string;
 	    dpop_auth_nonce: string;
 	    dpop_host_nonce: string;
 	    dpop_private_key: string;
@@ -31,6 +32,7 @@ export namespace main {
 	        this.auth_server_url = source["auth_server_url"];
 	        this.auth_server_token_endpoint = source["auth_server_token_endpoint"];
 	        this.auth_server_revocation_endpoint = source["auth_server_revocation_endpoint"];
+	        this.oauth_callback_url = source["oauth_callback_url"];
 	        this.dpop_auth_nonce = source["dpop_auth_nonce"];
 	        this.dpop_host_nonce = source["dpop_host_nonce"];
 	        this.dpop_private_key = source["dpop_private_key"];

@@ -31,6 +31,7 @@ type Auth struct {
 	AuthServerURL                string    `json:"auth_server_url"`
 	AuthServerTokenEndpoint      string    `json:"auth_server_token_endpoint"`
 	AuthServerRevocationEndpoint string    `json:"auth_server_revocation_endpoint"`
+	OAuthCallbackURL             string    `json:"oauth_callback_url"`
 	DPoPAuthNonce                string    `json:"dpop_auth_nonce"`
 	DPoPHostNonce                string    `json:"dpop_host_nonce"`
 	DPoPPrivateKey               string    `json:"dpop_private_key"`

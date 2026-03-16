@@ -150,6 +150,9 @@ func (s *IndexService) createClient() (*BlueskyClient, error) {
 	if auth == nil {
 		return nil, fmt.Errorf("not authenticated")
 	}
+	if authRequiresRelogin(auth) {
+		return nil, fmt.Errorf("stored session requires re-login")
+	}
 
 	if auth.SessionID == "" {
 		return nil, fmt.Errorf("session not found")
@@ -161,7 +164,7 @@ func (s *IndexService) createClient() (*BlueskyClient, error) {
 	}
 
 	store := NewSQLiteOAuthStore()
-	app := newOAuthApp(store, 0)
+	app := newOAuthAppForAuth(store, auth)
 
 	session, err := app.ResumeSession(ctx, did, auth.SessionID)
 	if err != nil {

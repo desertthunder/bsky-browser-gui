@@ -43,7 +43,7 @@
   let showLogs = $state(false);
   let selectedPost = $state<main.SearchResult | null>(null);
   let currentPage = $state(1);
-  let pageSize = $state(25);
+  let pageSize = $state(10);
   let appVersion = $state("dev");
   let showAbout = $state(false);
 
@@ -140,6 +140,7 @@
       status = "Login successful!";
       toaster.success("Login successful!");
       await checkAuthStatus();
+      await loadPosts();
     } catch (err) {
       status = `Login failed: ${err}`;
       toaster.error(`Login failed: ${err}`);
@@ -428,22 +429,18 @@
               onclick={() => void handleRefresh()}
               disabled={isIndexing}
               class="bg-surface border-outline hover:bg-outline text-bright rounded border px-4 py-2 font-sans transition-colors disabled:cursor-not-allowed disabled:opacity-50">
-              {#if isIndexing}
-                <span class="animate-pulse">Refreshing...</span>
-              {:else}
-                <span class="flex items-center gap-2">
-                  <i class="i-ri-refresh-line"></i>
-                  <span>Refresh</span>
-                </span>
-              {/if}
+              <span class="flex items-center gap-2 font-mono">
+                <i class="i-ri-refresh-line {isIndexing ? 'animate-spin' : ''}"></i>
+                <span class="sr-only">{isIndexing ? "Refreshing..." : "Refresh"}</span>
+              </span>
             </button>
 
             <button
               onclick={() => void handleLogout()}
               class="bg-surface border-outline hover:bg-outline text-bright rounded border px-4 py-2 font-sans transition-colors">
-              <span class="flex items-center gap-2">
+              <span class="flex items-center gap-2 font-mono">
                 <i class="i-ri-logout-box-r-line"></i>
-                <span>Logout</span>
+                <span class="sr-only">Logout</span>
               </span>
             </button>
           </div>
@@ -516,15 +513,17 @@
         {/if}
       </main>
 
-      {#if showLogs}
-        <div transition:slide={{ duration: 300 }}>
-          <LogViewer visible={showLogs} />
-        </div>
-      {/if}
+      <div class="shrink-0">
+        {#if showProgress}
+          <ProgressBar {isIndexing} {indexStats} />
+        {/if}
 
-      {#if showProgress}
-        <ProgressBar {isIndexing} {indexStats} />
-      {/if}
+        {#if showLogs}
+          <div transition:slide={{ axis: "y", duration: 260 }}>
+            <LogViewer visible={showLogs} />
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 </main>

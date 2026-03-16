@@ -1,3 +1,7 @@
+// Database access and migrations
+//
+// NOTE: migrations should be "registered" in the [`runMigrations`] function and
+// should be idempotent.
 package main
 
 import (
@@ -56,9 +60,21 @@ func runMigrations() error {
 	migrations := []string{
 		"migrations/000_initial_schema.sql",
 		"migrations/001_add_indexes.sql",
+		"migrations/002_add_oauth_callback_url.sql",
 	}
 
 	for _, migration := range migrations {
+		if migration == "migrations/002_add_oauth_callback_url.sql" {
+			hasColumn, err := columnExists("auth", "oauth_callback_url")
+			if err != nil {
+				return wrapDBError("failed to inspect auth.oauth_callback_url before migration", err)
+			}
+			if hasColumn {
+				LogInfof("migration skipped because schema is already up to date: %s", migration)
+				continue
+			}
+		}
+
 		content, err := migrationsFS.ReadFile(migration)
 		if err != nil {
 			return wrapDBError("failed to read migration "+migration, err)
@@ -87,6 +103,7 @@ var validSchemaIdentifiers = map[string]map[string]bool{
 		"auth_server_url":                 true,
 		"auth_server_token_endpoint":      true,
 		"auth_server_revocation_endpoint": true,
+		"oauth_callback_url":              true,
 		"dpop_auth_nonce":                 true,
 		"dpop_host_nonce":                 true,
 		"dpop_private_key":                true,
@@ -113,6 +130,7 @@ func ensureSchemaCompatibility() error {
 			{name: "auth_server_url", definition: "TEXT"},
 			{name: "auth_server_token_endpoint", definition: "TEXT"},
 			{name: "auth_server_revocation_endpoint", definition: "TEXT"},
+			{name: "oauth_callback_url", definition: "TEXT"},
 			{name: "dpop_auth_nonce", definition: "TEXT"},
 			{name: "dpop_host_nonce", definition: "TEXT"},
 			{name: "dpop_private_key", definition: "TEXT"},
@@ -330,9 +348,9 @@ func UpsertAuth(auth *Auth) error {
 
 	query := `
 		INSERT INTO auth (did, handle, access_jwt, refresh_jwt, pds_url, session_id,
-						  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint,
+						  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint, oauth_callback_url,
 						  dpop_auth_nonce, dpop_host_nonce, dpop_private_key, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT(did) DO UPDATE SET
 			handle = excluded.handle,
 			access_jwt = excluded.access_jwt,
@@ -342,6 +360,7 @@ func UpsertAuth(auth *Auth) error {
 			auth_server_url = excluded.auth_server_url,
 			auth_server_token_endpoint = excluded.auth_server_token_endpoint,
 			auth_server_revocation_endpoint = excluded.auth_server_revocation_endpoint,
+			oauth_callback_url = excluded.oauth_callback_url,
 			dpop_auth_nonce = excluded.dpop_auth_nonce,
 			dpop_host_nonce = excluded.dpop_host_nonce,
 			dpop_private_key = excluded.dpop_private_key,
@@ -358,6 +377,7 @@ func UpsertAuth(auth *Auth) error {
 		auth.AuthServerURL,
 		auth.AuthServerTokenEndpoint,
 		auth.AuthServerRevocationEndpoint,
+		auth.OAuthCallbackURL,
 		auth.DPoPAuthNonce,
 		auth.DPoPHostNonce,
 		auth.DPoPPrivateKey,
@@ -381,7 +401,7 @@ func GetAuth() (*Auth, error) {
 	LogInfo("loading auth from database")
 
 	query := `SELECT did, handle, access_jwt, refresh_jwt, pds_url, session_id,
-			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint,
+			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint, oauth_callback_url,
 			  dpop_auth_nonce, dpop_host_nonce, dpop_private_key, updated_at
 			  FROM auth
 			  ORDER BY updated_at DESC
@@ -405,7 +425,7 @@ func GetAuth() (*Auth, error) {
 // GetAuthByDID loads auth for a specific DID.
 func GetAuthByDID(did string) (*Auth, error) {
 	query := `SELECT did, handle, access_jwt, refresh_jwt, pds_url, session_id,
-			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint,
+			  auth_server_url, auth_server_token_endpoint, auth_server_revocation_endpoint, oauth_callback_url,
 			  dpop_auth_nonce, dpop_host_nonce, dpop_private_key, updated_at
 			  FROM auth
 			  WHERE did = ?
@@ -425,7 +445,7 @@ func getAuthByQuery(query string, args ...any) (*Auth, error) {
 	var auth Auth
 	var updatedAt string
 
-	var sessionID, authServerURL, authServerTokenEndpoint, authServerRevocationEndpoint, dpopAuthNonce, dpopHostNonce, dpopPrivateKey sql.NullString
+	var sessionID, authServerURL, authServerTokenEndpoint, authServerRevocationEndpoint, oauthCallbackURL, dpopAuthNonce, dpopHostNonce, dpopPrivateKey sql.NullString
 
 	err := db.QueryRow(query, args...).Scan(
 		&auth.DID,
@@ -437,6 +457,7 @@ func getAuthByQuery(query string, args ...any) (*Auth, error) {
 		&authServerURL,
 		&authServerTokenEndpoint,
 		&authServerRevocationEndpoint,
+		&oauthCallbackURL,
 		&dpopAuthNonce,
 		&dpopHostNonce,
 		&dpopPrivateKey,
@@ -457,6 +478,9 @@ func getAuthByQuery(query string, args ...any) (*Auth, error) {
 	}
 	if authServerRevocationEndpoint.Valid {
 		auth.AuthServerRevocationEndpoint = authServerRevocationEndpoint.String
+	}
+	if oauthCallbackURL.Valid {
+		auth.OAuthCallbackURL = oauthCallbackURL.String
 	}
 	if dpopAuthNonce.Valid {
 		auth.DPoPAuthNonce = dpopAuthNonce.String
