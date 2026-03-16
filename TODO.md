@@ -1,70 +1,90 @@
-# Wails Desktop App — Roadmap
+# v0.2.0 Roadmap
 
-## Milestone 1 — Scaffold & Tooling
+## Milestone 1 — Multi-Account Database Architecture
 
-- [x] Install Tailwind v4 (`tailwindcss`, `@tailwindcss/vite`) and wire `vite.config.ts`
-- [x] Install Fontsource packages (`@fontsource/jetbrains-mono`, `@fontsource-variable/geist`, `@fontsource-variable/lora`)
-- [x] Create `frontend/src/index.css` with `@import "tailwindcss"` and `@theme` tokens (palette, fonts)
-- [x] Put font CSS imports in `App.svelte`
-- [x] Set up `Taskfile.yml` for build tasks
-- [x] Verify `wails dev` hot-reloads a "Hello World" page with correct fonts and theme
+- [ ] Create `DatabaseManager` struct to replace global `db *sql.DB` (holds shared DB + per-account DB)
+- [ ] Implement per-account database path resolution: `<config_dir>/bsky-browser/accounts/<DID>/bsky-browser.db`
+- [ ] Migrate auth queries (`GetAuth`, `UpsertAuth`, `GetAuthByDID`) to use shared DB connection
+- [ ] Migrate post queries (`InsertPost`, `SearchPosts`, `CountPosts`, `PostExists`) to use per-account DB connection
+- [ ] Update `Open()` to initialize both shared and per-account databases with migrations
+- [ ] Update `app.startup()` to auto-select the most recently updated account and open its database
+- [ ] Add migration `001_add_active_account.sql` for tracking active account in shared DB
+- [ ] Tests: `DatabaseManager` open/close, account switching with multiple temp databases
 
-## Milestone 2 — Database Layer
+## Milestone 2 — Account Switcher Service & UI
 
-- [x] Implement `database.go` — `Open()`, `Close()`, embedded migrations via `//go:embed`
-- [x] Copy existing migrations from CLI (`000`–`003`) and add `004_add_facets_column.sql` (`ALTER TABLE posts ADD COLUMN facets TEXT`)
-- [x] Enable WAL mode (`PRAGMA journal_mode=WAL`) on connection open
-- [x] Implement `models.go` — `Post`, `Auth`, `SearchResult` structs (add `Facets` field to `Post`)
-- [x] Implement `PostExists`, `InsertPost`, `UpsertAuth`, `GetAuth`, `SearchPosts`, `CountPosts`
-- [x] Verify the desktop app and CLI can read/write the same database concurrently
+- [ ] Implement `AccountService` struct with Wails binding
+- [ ] `ListAccounts()` — query all rows from shared `auth` table
+- [ ] `SwitchAccount(did)` — close current per-account DB, open target, emit `account:switched` event
+- [ ] `RemoveAccount(did)` — delete auth row and account database directory
+- [ ] `GetActiveAccount()` — return current account info
+- [ ] Update `AuthService.Login()` to create per-account DB directory on new login
+- [ ] Frontend: account switcher dropdown in header with handle list
+- [ ] Frontend: "Add Account" and "Remove Account" actions
+- [ ] Frontend: listen for `account:switched` to reset search/post state
+- [ ] Tests: `ListAccounts`, `SwitchAccount`, `RemoveAccount` with temp dirs
 
-## Milestone 3 — Authentication
+## Milestone 3 — Profile View & Author Feed
 
-- [x] Implement `AuthService` struct with Wails service binding
-- [x] `Login(handle)` — loopback OAuth via `oauth.NewLocalhostConfig`, persist tokens to shared DB
-- [x] `Whoami(force)` — load auth from DB, optionally resolve handle from DID
-- [x] `IsAuthenticated()` — check for valid auth row
-- [x] Automatic token refresh on `OnStartup` lifecycle hook
-- [x] Frontend: login view with handle input, "Login" button, and status display
+- [ ] Add `ProfileView` model struct to `models.go`
+- [ ] Implement `ProfileService` with Wails binding
+- [ ] `GetProfile()` — call `bsky.ActorGetProfile` with active account DID
+- [ ] `GetAuthorFeed(filter, cursor, limit)` — call `bsky.FeedGetAuthorFeed` with pagination
+- [ ] Frontend: `ProfileView.svelte` component with profile card (avatar, name, bio, stats)
+- [ ] Frontend: tabbed author feed below profile card (Posts / Replies / Media filters)
+- [ ] Frontend: infinite scroll pagination using cursor
+- [ ] Frontend: navigate to profile view from header handle/avatar click
 
-## Milestone 4 — Indexing & Progress
+## Milestone 4 — Search Own Posts
 
-- [x] Implement `IndexService` struct with Wails service binding
-- [x] `Refresh(limit)` — concurrent bookmark + like fetch, batch insert (port `RefreshAndIndex` logic)
-- [x] Populate `facets` column from `FeedPost.Facets` during `convertPostView`
-- [x] `IsIndexing()` — thread-safe boolean guard to prevent concurrent refreshes
-- [x] Emit Wails events: `index:started`, `index:progress`, `index:done`
-- [x] Frontend: "Refresh" button in header, optional limit input
-- [x] Frontend: bottom-pinned progress bar component driven by `index:*` events
+- [ ] Extend `SearchPosts()` with optional `authorDID` parameter
+- [ ] Update FTS5 query to add `AND p.author_did = ?` when author filter is active
+- [ ] Update `SearchService.Search()` to accept the author filter
+- [ ] Frontend: "My Posts" toggle/tab in SearchBar that constrains to active account DID
+- [ ] Tests: `SearchPosts` with author filter, mixed-author datasets
 
-## Milestone 5 — Search & Data Table
+## Milestone 5 — Post Composer
 
-- [x] Implement `SearchService` struct with Wails service binding
-- [x] `Search(query, source)` — FTS5 query with BM25 ranking and source filter
-- [x] `CountPosts()` — total indexed post count
-- [x] Frontend: search bar with query input and source filter (All / Saved / Liked segmented control)
-- [x] Frontend: tabbed data table component (Saved / Liked / All tabs)
-- [x] Columns: Author Handle, Text (truncated), Created At, ♥ Likes, 🔁 Reposts, 💬 Replies, Source
-- [x] Client-side column sorting (click header to toggle asc/desc)
-- [x] Row click → open post URL in default browser via `runtime.BrowserOpenURL`
+- [ ] Implement `PostService` struct with Wails binding
+- [ ] `CreatePost(text, replyTo)` — build `bsky.FeedPost` record, call `atproto.RepoCreateRecord`
+- [ ] Facet detection for mentions, links, and hashtags
+- [ ] Character limit enforcement (300 grapheme clusters)
+- [ ] Frontend: compose button in header
+- [ ] Frontend: compose modal with textarea, character counter, live facet preview
+- [ ] Frontend: optional reply-to context from PostDetailPanel
 
-## Milestone 6 — Facets & Log Viewer
+## Milestone 6 — Drafts
 
-- [x] Frontend: facet parser — convert UTF-8 byte offsets to JS string indices
-- [x] Frontend: facet renderer — links (`<a>`), mentions (`@handle`), hashtags (`#tag`)
-- [x] Integrate rendered facets into post text in data table rows
-- [x] Implement `LogService` — custom `io.Writer` that emits `log:line` events
-- [x] Wire `LogService` writer into `log.NewWithOptions` alongside file writer
-- [x] Frontend: log viewer panel with terminal-style dark background, monospace text
-- [x] Auto-scroll to bottom with scroll-lock toggle
-- [x] Level filter buttons: Debug, Info, Warn, Error
+- [ ] Add `drafts` table migration in per-account database
+- [ ] Implement `PostService.SaveDraft()`, `ListDrafts()`, `GetDraft()`, `DeleteDraft()`
+- [ ] `PublishDraft(id)` — create post and delete draft atomically
+- [ ] Frontend: "Save Draft" button in compose modal
+- [ ] Frontend: drafts panel with list view, click-to-edit, and delete
+- [ ] Frontend: draft count badge on drafts button
+- [ ] Tests: draft CRUD operations and publish flow
 
-## Milestone 7 — Polish
+## Milestone 7 — System Tray
 
-- [x] Animations with svelte APIs (transition, animate)
-- [x] Empty state: show "No posts indexed" with prompt to refresh
-- [x] Error handling: toast/notification for network failures, auth expiry
-- [x] Keyboard shortcuts: `Cmd+K` focus search, `Cmd+R` refresh, `Cmd+L` toggle log viewer
-- [x] Window title and app icon (`build/appicon.png`)
-- [x] Production build verification (`wails build` → macOS `.app` bundle)
-- [~] README with build instructions, screenshots, and usage
+- [ ] Add `ra1phdd/systray-on-wails` dependency
+- [ ] Create tray icon asset (`build/tray_icon.png`, 22×22 monochrome)
+- [ ] Initialize system tray in `app.startup()` with menu items
+- [ ] Menu items: active account label, Quick Post, Refresh Posts, Show/Hide Window, Quit
+- [ ] Quick Post: focus window and open compose modal via Wails event
+- [ ] Refresh Posts: trigger `IndexService.Refresh(0)` from tray
+
+## Milestone 8 — Go Test Coverage
+
+- [ ] `auth_service_test.go` — `IsAuthenticated`, `Whoami` with mocked DB state
+- [ ] `index_service_test.go` — `batchWriter`, `convertPostView`, `extractFacets`, `parsePostRecord`
+- [ ] `post_service_test.go` — draft CRUD, `CreatePost` record assembly (no network)
+- [ ] `account_service_test.go` — multi-account switching with temp directories
+- [ ] Expand `database_test.go` — `InsertPost` upsert, `CountPosts`, multi-account `UpsertAuth`, FTS5 ranking edge cases
+- [ ] Establish CI-friendly test target in `Taskfile.yml` (`task test`)
+
+## Milestone 9 — Polish & Integration
+
+- [ ] End-to-end smoke test: login → switch account → compose → post → verify in feed
+- [ ] Error handling: toast notifications for tray actions, compose failures, account switch errors
+- [ ] Loading states for profile view, author feed, and compose
+- [ ] Keyboard shortcut: `Cmd+N` open compose modal
+- [ ] Update README with Phase 2 features and screenshots
