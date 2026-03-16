@@ -39,9 +39,7 @@
   let isSearching = $state(false);
   let showLogs = $state(false);
   let selectedPost = $state<main.SearchResult | null>(null);
-
-  // TODO: page size should be configurable with $state
-  const pageSize = 25;
+  let pageSize = $state(25);
 
   onMount(() => {
     document.addEventListener("keydown", handleGlobalKeydown);
@@ -333,7 +331,7 @@
       </header>
 
       <div class="border-outline border-b px-6 py-4">
-        <SearchBar bind:query={searchQuery} bind:source={searchSource} onSearch={performSearch} />
+        <SearchBar bind:query={searchQuery} bind:source={searchSource} bind:pageSize onSearch={performSearch} />
       </div>
 
       <main class="flex-1 overflow-hidden p-6">
